@@ -15,11 +15,17 @@ import {
   Loader,
   ChevronLeft,
   ChevronRight,
+  Plus,
 } from "lucide-react";
 import "../styles/panel.css";
 import { bibleService, BibleVersion, Verse } from "../services/bibleService";
 import { useLive } from "../store/LiveContext";
-import { getSongs, saveMedia, addSong, deleteSong } from "../services/dbService";
+import {
+  getSongs,
+  addSong,
+  deleteSong,
+  updateSong,
+} from "../services/dbService";
 
 const getRgba = (hex: string, opacity: number) => {
   if (!hex) return `rgba(0, 0, 0, ${opacity / 100})`;
@@ -30,13 +36,20 @@ const getRgba = (hex: string, opacity: number) => {
 };
 
 export default function ControlPanel() {
-  const [isLoading, setIsLoading] = useState(true);
   const [savedSongs, setSavedSongs] = useState<any[]>([]);
 
   const [activeTab, setActiveTab] = useState<"bible" | "songs" | "setlist">(
     "bible",
   );
   const [lyrics, setLyrics] = useState("");
+  const [activeSongId, setActiveSongId] = useState("");
+  const [activeSongTitle, setActiveSongTitle] = useState("");
+  const [activeSongArtist, setActiveSongArtist] = useState("");
+  const [activeSongSettings, setActiveSongSettings] = useState<any>({
+    layout: "LT",
+    linesMode: 1,
+    fontSize: 5.5,
+  });
 
   const [sidebarWidth, setSidebarWidth] = useState(380);
   const [programWidth, setProgramWidth] = useState(550);
@@ -47,8 +60,11 @@ export default function ControlPanel() {
 
   // Bible State
   const [bibles, setBibles] = useState<BibleVersion[]>([]);
-  const [availableServerBibles, setAvailableServerBibles] = useState<string[]>([]);
-  const [bibleLoadingProgress, setBibleLoadingProgress] = useState<{current: number, total: number} | null>(null);
+
+  const [bibleLoadingProgress, setBibleLoadingProgress] = useState<{
+    current: number;
+    total: number;
+  } | null>(null);
   const [selectedBibleId, setSelectedBibleId] = useState<string>("");
   const [selectedBookNum, setSelectedBookNum] = useState<number | "">("");
   const [selectedChapterNum, setSelectedChapterNum] = useState<number | "">("");
@@ -74,19 +90,21 @@ export default function ControlPanel() {
   const [renderKey, setRenderKey] = useState(0);
 
   const [obsUrl, setObsUrl] = useState<string>(
-    `${window.location.protocol}//${window.location.host}/output`
+    `${window.location.protocol}//${window.location.host}/output`,
   );
 
   useEffect(() => {
-    fetch('/api/local-ip')
-      .then(res => res.json())
-      .then(data => {
+    fetch("/api/local-ip")
+      .then((res) => res.json())
+      .then((data) => {
         if (data.ip) {
           const port = window.location.port || "5173";
           setObsUrl(`http://${data.ip}:${port}/output`);
         }
       })
-      .catch(err => console.error("Could not fetch local IP for OBS URL", err));
+      .catch((err) =>
+        console.error("Could not fetch local IP for OBS URL", err),
+      );
   }, []);
 
   const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -152,10 +170,8 @@ export default function ControlPanel() {
 
   useEffect(() => {
     const initData = async () => {
-      setIsLoading(true);
       await loadBibles();
       await loadSongs();
-      setIsLoading(false);
     };
     initData();
   }, []);
@@ -199,18 +215,24 @@ export default function ControlPanel() {
       const songs = await getSongs();
       const exportData = {
         liveState,
-        songs
+        songs,
       };
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `web-projector-settings-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `web-projector-settings-${new Date().toISOString().split("T")[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      import("react-hot-toast").then((module) => module.toast.success("Settings exported successfully!"));
-    } catch(e) {
-      import("react-hot-toast").then((module) => module.toast.error("Failed to export settings"));
+      import("react-hot-toast").then((module) =>
+        module.toast.success("Settings exported successfully!"),
+      );
+    } catch (e) {
+      import("react-hot-toast").then((module) =>
+        module.toast.error("Failed to export settings"),
+      );
     }
   };
 
@@ -230,9 +252,13 @@ export default function ControlPanel() {
           }
           loadSongs();
         }
-        import("react-hot-toast").then((module) => module.toast.success("Settings and songs imported successfully!"));
+        import("react-hot-toast").then((module) =>
+          module.toast.success("Settings and songs imported successfully!"),
+        );
       } catch (err) {
-        import("react-hot-toast").then((module) => module.toast.error("Invalid JSON file"));
+        import("react-hot-toast").then((module) =>
+          module.toast.error("Invalid JSON file"),
+        );
       }
     };
     reader.readAsText(file);
@@ -242,16 +268,22 @@ export default function ControlPanel() {
     try {
       const songs = await getSongs();
       const exportData = { songs };
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `web-projector-songs-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `web-projector-songs-${new Date().toISOString().split("T")[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
-      import("react-hot-toast").then((module) => module.toast.success("Songs exported successfully!"));
-    } catch(e) {
-      import("react-hot-toast").then((module) => module.toast.error("Failed to export songs"));
+      import("react-hot-toast").then((module) =>
+        module.toast.success("Songs exported successfully!"),
+      );
+    } catch (e) {
+      import("react-hot-toast").then((module) =>
+        module.toast.error("Failed to export songs"),
+      );
     }
   };
 
@@ -264,36 +296,62 @@ export default function ControlPanel() {
         const data = JSON.parse(event.target?.result as string);
         if (data.songs && Array.isArray(data.songs)) {
           for (const s of data.songs) {
-            await addSong(s.title, s.artist || "Unknown", s.lyrics);
+            await addSong(
+              s.title,
+              s.artist || "Unknown",
+              s.lyrics,
+              s.settings,
+              s.id,
+            );
           }
           loadSongs();
-          import("react-hot-toast").then((module) => module.toast.success("Songs imported successfully!"));
+          import("react-hot-toast").then((module) =>
+            module.toast.success("Songs imported successfully!"),
+          );
         } else if (Array.isArray(data)) {
           for (const s of data) {
-            if (s.title && s.lyrics) await addSong(s.title, s.artist || "Unknown", s.lyrics);
+            if (s.title && s.lyrics)
+              await addSong(
+                s.title,
+                s.artist || "Unknown",
+                s.lyrics,
+                s.settings,
+                s.id,
+              );
           }
           loadSongs();
-          import("react-hot-toast").then((module) => module.toast.success("Songs imported successfully!"));
+          import("react-hot-toast").then((module) =>
+            module.toast.success("Songs imported successfully!"),
+          );
         } else {
-          import("react-hot-toast").then((module) => module.toast.error("No songs found in file"));
+          import("react-hot-toast").then((module) =>
+            module.toast.error("No songs found in file"),
+          );
         }
       } catch (err) {
-        import("react-hot-toast").then((module) => module.toast.error("Invalid JSON file"));
+        import("react-hot-toast").then((module) =>
+          module.toast.error("Invalid JSON file"),
+        );
       }
     };
     reader.readAsText(file);
-    e.target.value = '';
+    e.target.value = "";
   };
 
   const loadBibles = async () => {
     try {
       let loadedBibles = await bibleService.getAllBibles();
       setBibles(loadedBibles);
-      
+
       const serverBibles = await bibleService.getAvailableServerBibles();
-      
-      const toLoad = serverBibles.filter(filename => !loadedBibles.some(b => b.id === "bible_" + filename.replace('.xml', '')));
-      
+
+      const toLoad = serverBibles.filter(
+        (filename) =>
+          !loadedBibles.some(
+            (b) => b.id === "bible_" + filename.replace(".xml", ""),
+          ),
+      );
+
       if (toLoad.length > 0) {
         setBibleLoadingProgress({ current: 0, total: toLoad.length });
         for (let i = 0; i < toLoad.length; i++) {
@@ -304,15 +362,13 @@ export default function ControlPanel() {
               loadedBibles = [...loadedBibles, parsed];
               setBibles(loadedBibles);
             }
-          } catch(e) {
+          } catch (e) {
             console.error(`Failed to load ${filename}`, e);
           }
           setBibleLoadingProgress({ current: i + 1, total: toLoad.length });
         }
         setBibleLoadingProgress(null);
       }
-
-      setAvailableServerBibles(serverBibles);
 
       if (loadedBibles.length > 0 && !selectedBibleId) {
         setSelectedBibleId(loadedBibles[0].id);
@@ -357,13 +413,17 @@ export default function ControlPanel() {
       setLyrics(text);
       setActiveTab("songs");
       setSongViewMode("edit");
-      
+
       const songName = file.name.replace(".txt", "");
       try {
-        await addSong(songName, "Unknown", text);
+        await addSong(songName, "Unknown", text, {
+          layout: "LT",
+          linesMode: 1,
+          fontSize: 5.5,
+        });
         loadSongs();
         toast.success(`Imported and saved ${songName}`);
-      } catch(err) {
+      } catch (err) {
         console.error("Failed to save imported song to local DB", err);
       }
     };
@@ -384,10 +444,15 @@ export default function ControlPanel() {
         setLyrics(data.lyrics);
         setSongViewMode("edit");
         try {
-          await addSong(songSearchTitle, songSearchArtist || "Unknown", data.lyrics);
+          await addSong(
+            songSearchTitle,
+            songSearchArtist || "Unknown",
+            data.lyrics,
+            { layout: "LT", linesMode: 1, fontSize: 5.5 },
+          );
           loadSongs();
           toast.success(`Found and saved ${songSearchTitle}`);
-        } catch(err) {
+        } catch (err) {
           console.error("Failed to save searched song to local DB", err);
         }
       } else {
@@ -407,8 +472,9 @@ export default function ControlPanel() {
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
     const chunks: string[] = [];
-    for (let i = 0; i < lines.length; i += liveState.linesMode) {
-      chunks.push(lines.slice(i, i + liveState.linesMode).join("\n"));
+    const mode = liveState.linesMode || 1;
+    for (let i = 0; i < lines.length; i += mode) {
+      chunks.push(lines.slice(i, i + mode).join("\n"));
     }
     return chunks;
   }, [lyrics, liveState.linesMode]);
@@ -418,8 +484,9 @@ export default function ControlPanel() {
     setActiveProjectedRef(null);
     projectLive({
       type: "song",
-      title: songSearchTitle ? songSearchTitle : "Lyrics",
+      title: activeSongTitle || "Lyrics",
       text: chunkText,
+      layout: activeSongSettings.layout || "LT",
     });
   };
 
@@ -721,16 +788,54 @@ export default function ControlPanel() {
                 </div>
               </div>
 
-              <div style={{ marginTop: "20px", borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "20px" }}>
-                <h4 style={{ color: "white", marginBottom: "16px" }}>Typography Options</h4>
-                
+              <div
+                style={{
+                  marginTop: "20px",
+                  borderTop: "1px solid rgba(255,255,255,0.1)",
+                  paddingTop: "20px",
+                }}
+              >
+                <h4 style={{ color: "white", marginBottom: "16px" }}>
+                  Typography Options
+                </h4>
+
                 {/* Song Typography */}
-                <div style={{ marginBottom: "16px", padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "8px" }}>
-                  <span style={{ color: "white", fontWeight: 600, display: "block", marginBottom: "12px" }}>Song Lyrics</span>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                <div
+                  style={{
+                    marginBottom: "16px",
+                    padding: "12px",
+                    background: "rgba(0,0,0,0.2)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: 600,
+                      display: "block",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Song Lyrics
+                  </span>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "20px",
+                    }}
+                  >
                     <div className="control-group">
                       <span className="control-label">Transform</span>
-                      <select className="input" value={liveState.songTextTransform} onChange={(e) => projectLive({ songTextTransform: e.target.value as any })}>
+                      <select
+                        className="input"
+                        value={liveState.songTextTransform}
+                        onChange={(e) =>
+                          projectLive({
+                            songTextTransform: e.target.value as any,
+                          })
+                        }
+                      >
                         <option value="none">Normal</option>
                         <option value="uppercase">UPPERCASE</option>
                         <option value="lowercase">lowercase</option>
@@ -739,7 +844,13 @@ export default function ControlPanel() {
                     </div>
                     <div className="control-group">
                       <span className="control-label">Weight</span>
-                      <select className="input" value={liveState.songFontWeight} onChange={(e) => projectLive({ songFontWeight: e.target.value })}>
+                      <select
+                        className="input"
+                        value={liveState.songFontWeight}
+                        onChange={(e) =>
+                          projectLive({ songFontWeight: e.target.value })
+                        }
+                      >
                         <option value="400">Normal</option>
                         <option value="500">Medium</option>
                         <option value="600">Semi-Bold</option>
@@ -751,12 +862,42 @@ export default function ControlPanel() {
                 </div>
 
                 {/* Bible Verse Typography */}
-                <div style={{ marginBottom: "16px", padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "8px" }}>
-                  <span style={{ color: "white", fontWeight: 600, display: "block", marginBottom: "12px" }}>Bible Verses</span>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                <div
+                  style={{
+                    marginBottom: "16px",
+                    padding: "12px",
+                    background: "rgba(0,0,0,0.2)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: 600,
+                      display: "block",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Bible Verses
+                  </span>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "20px",
+                    }}
+                  >
                     <div className="control-group">
                       <span className="control-label">Transform</span>
-                      <select className="input" value={liveState.bibleTextTransform} onChange={(e) => projectLive({ bibleTextTransform: e.target.value as any })}>
+                      <select
+                        className="input"
+                        value={liveState.bibleTextTransform}
+                        onChange={(e) =>
+                          projectLive({
+                            bibleTextTransform: e.target.value as any,
+                          })
+                        }
+                      >
                         <option value="none">Normal</option>
                         <option value="uppercase">UPPERCASE</option>
                         <option value="lowercase">lowercase</option>
@@ -765,7 +906,13 @@ export default function ControlPanel() {
                     </div>
                     <div className="control-group">
                       <span className="control-label">Weight</span>
-                      <select className="input" value={liveState.bibleFontWeight} onChange={(e) => projectLive({ bibleFontWeight: e.target.value })}>
+                      <select
+                        className="input"
+                        value={liveState.bibleFontWeight}
+                        onChange={(e) =>
+                          projectLive({ bibleFontWeight: e.target.value })
+                        }
+                      >
                         <option value="400">Normal</option>
                         <option value="500">Medium</option>
                         <option value="600">Semi-Bold</option>
@@ -777,12 +924,42 @@ export default function ControlPanel() {
                 </div>
 
                 {/* Reference Typography */}
-                <div style={{ marginBottom: "20px", padding: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "8px" }}>
-                  <span style={{ color: "white", fontWeight: 600, display: "block", marginBottom: "12px" }}>Bible References</span>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+                <div
+                  style={{
+                    marginBottom: "20px",
+                    padding: "12px",
+                    background: "rgba(0,0,0,0.2)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <span
+                    style={{
+                      color: "white",
+                      fontWeight: 600,
+                      display: "block",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    Bible References
+                  </span>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr",
+                      gap: "20px",
+                    }}
+                  >
                     <div className="control-group">
                       <span className="control-label">Transform</span>
-                      <select className="input" value={liveState.refTextTransform} onChange={(e) => projectLive({ refTextTransform: e.target.value as any })}>
+                      <select
+                        className="input"
+                        value={liveState.refTextTransform}
+                        onChange={(e) =>
+                          projectLive({
+                            refTextTransform: e.target.value as any,
+                          })
+                        }
+                      >
                         <option value="none">Normal</option>
                         <option value="uppercase">UPPERCASE</option>
                         <option value="lowercase">lowercase</option>
@@ -791,7 +968,13 @@ export default function ControlPanel() {
                     </div>
                     <div className="control-group">
                       <span className="control-label">Weight</span>
-                      <select className="input" value={liveState.refFontWeight} onChange={(e) => projectLive({ refFontWeight: e.target.value })}>
+                      <select
+                        className="input"
+                        value={liveState.refFontWeight}
+                        onChange={(e) =>
+                          projectLive({ refFontWeight: e.target.value })
+                        }
+                      >
                         <option value="400">Normal</option>
                         <option value="500">Medium</option>
                         <option value="600">Semi-Bold</option>
@@ -926,41 +1109,6 @@ export default function ControlPanel() {
                     }
                   />
                 </div>
-
-                <div className="control-group">
-                  <span className="control-label">
-                    Bible Verse Font Size (cqi)
-                  </span>
-                  <input
-                    type="number"
-                    className="input"
-                    min="2"
-                    max="15"
-                    step="0.5"
-                    value={liveState.bibleFontSize}
-                    onChange={(e) =>
-                      projectLive({ bibleFontSize: Number(e.target.value) })
-                    }
-                  />
-                </div>
-
-                <div className="control-group">
-                  <span className="control-label">
-                    Song Lyrics Font Size (cqi)
-                  </span>
-                  <input
-                    type="number"
-                    className="input"
-                    min="2"
-                    max="15"
-                    step="0.5"
-                    value={liveState.songFontSize}
-                    onChange={(e) =>
-                      projectLive({ songFontSize: Number(e.target.value) })
-                    }
-                  />
-                </div>
-
                 <div className="control-group">
                   <span className="control-label">
                     Side Padding (FS & LT) (%)
@@ -994,23 +1142,33 @@ export default function ControlPanel() {
                 </div>
 
                 <div className="control-group" style={{ gridColumn: "1 / -1" }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: "8px", color: "white", cursor: "pointer" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      color: "white",
+                      cursor: "pointer",
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={liveState.enableLowerThirdBg}
-                      onChange={(e) => projectLive({ enableLowerThirdBg: e.target.checked })}
+                      onChange={(e) =>
+                        projectLive({ enableLowerThirdBg: e.target.checked })
+                      }
                     />
                     Enable Lower Third Background
                   </label>
                 </div>
-                
+
                 <div className="control-group">
                   <span className="control-label">Lower Third Bg Color</span>
                   <input
                     type="color"
                     className="input"
-                    style={{ padding: '0', height: '40px' }}
-                    value={liveState.lowerThirdBgColor || '#000000'}
+                    style={{ padding: "0", height: "40px" }}
+                    value={liveState.lowerThirdBgColor || "#000000"}
                     onChange={(e) =>
                       projectLive({ lowerThirdBgColor: e.target.value })
                     }
@@ -1018,7 +1176,9 @@ export default function ControlPanel() {
                 </div>
 
                 <div className="control-group">
-                  <span className="control-label">Lower Third Bg Opacity (%)</span>
+                  <span className="control-label">
+                    Lower Third Bg Opacity (%)
+                  </span>
                   <input
                     type="range"
                     style={{ width: "100%" }}
@@ -1027,16 +1187,26 @@ export default function ControlPanel() {
                     step="1"
                     value={liveState.lowerThirdBgOpacity ?? 50}
                     onChange={(e) =>
-                      projectLive({ lowerThirdBgOpacity: Number(e.target.value) })
+                      projectLive({
+                        lowerThirdBgOpacity: Number(e.target.value),
+                      })
                     }
                   />
-                  <div style={{ textAlign: "right", fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                  <div
+                    style={{
+                      textAlign: "right",
+                      fontSize: "0.8rem",
+                      color: "var(--text-secondary)",
+                    }}
+                  >
                     {liveState.lowerThirdBgOpacity ?? 50}%
                   </div>
                 </div>
 
                 <div className="control-group" style={{ gridColumn: "1 / -1" }}>
-                  <span className="control-label">Lower Third Top/Bottom Padding (vw)</span>
+                  <span className="control-label">
+                    Lower Third Top/Bottom Padding (vw)
+                  </span>
                   <input
                     type="number"
                     className="input"
@@ -1129,34 +1299,85 @@ export default function ControlPanel() {
                 style={{
                   borderTop: "1px solid var(--border-subtle)",
                   marginTop: "20px",
-                  paddingTop: "20px"
+                  paddingTop: "20px",
                 }}
               >
-                <h4 style={{ color: "white", marginBottom: "16px" }}>Backup & Restore</h4>
-                
-                <h5 style={{ color: "var(--text-muted)", marginBottom: "8px", fontSize: "0.85rem" }}>Settings & Songs</h5>
-                <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
-                  <button className="btn btn-secondary" onClick={handleExportSettings}>
+                <h4 style={{ color: "white", marginBottom: "16px" }}>
+                  Backup & Restore
+                </h4>
+
+                <h5
+                  style={{
+                    color: "var(--text-muted)",
+                    marginBottom: "8px",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  Settings & Songs
+                </h5>
+                <div
+                  style={{ display: "flex", gap: "10px", marginBottom: "16px" }}
+                >
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleExportSettings}
+                  >
                     Export All
                   </button>
-                  <label className="btn btn-secondary" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <label
+                    className="btn btn-secondary"
+                    style={{
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
                     Import All
-                    <input type="file" accept=".json" hidden onChange={handleImportSettings} />
+                    <input
+                      type="file"
+                      accept=".json"
+                      hidden
+                      onChange={handleImportSettings}
+                    />
                   </label>
                 </div>
 
-                <h5 style={{ color: "var(--text-muted)", marginBottom: "8px", fontSize: "0.85rem" }}>Songs Only</h5>
+                <h5
+                  style={{
+                    color: "var(--text-muted)",
+                    marginBottom: "8px",
+                    fontSize: "0.85rem",
+                  }}
+                >
+                  Songs Only
+                </h5>
                 <div style={{ display: "flex", gap: "10px" }}>
-                  <button className="btn btn-primary" onClick={handleExportSongs}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleExportSongs}
+                  >
                     Export Songs
                   </button>
-                  <label className="btn btn-primary" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <label
+                    className="btn btn-primary"
+                    style={{
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
                     Import Songs
-                    <input type="file" accept=".json" hidden onChange={handleImportSongs} />
+                    <input
+                      type="file"
+                      accept=".json"
+                      hidden
+                      onChange={handleImportSongs}
+                    />
                   </label>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
@@ -1252,8 +1473,22 @@ export default function ControlPanel() {
                     <Database size={12} /> Local Bible Database
                   </h4>
                   {bibleLoadingProgress && (
-                    <div style={{ fontSize: "0.85rem", color: "var(--secondary)", marginBottom: "8px", display: "flex", alignItems: "center", gap: "8px" }}>
-                      <Loader size={14} style={{ animation: 'spin 2s linear infinite' }} /> Loading Bibles... ({bibleLoadingProgress.current}/{bibleLoadingProgress.total})
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        color: "var(--secondary)",
+                        marginBottom: "8px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <Loader
+                        size={14}
+                        style={{ animation: "spin 2s linear infinite" }}
+                      />{" "}
+                      Loading Bibles... ({bibleLoadingProgress.current}/
+                      {bibleLoadingProgress.total})
                     </div>
                   )}
                   {bibles.length === 0 ? (
@@ -1280,20 +1515,30 @@ export default function ControlPanel() {
                           onClick={() => handleVersionChange(b.id)}
                           style={{
                             padding: "8px 12px",
-                            background: selectedBibleId === b.id ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.2)",
+                            background:
+                              selectedBibleId === b.id
+                                ? "rgba(255,255,255,0.1)"
+                                : "rgba(0,0,0,0.2)",
                             borderRadius: "6px",
-                            border: selectedBibleId === b.id ? "1px solid var(--primary)" : "1px solid var(--border-subtle)",
+                            border:
+                              selectedBibleId === b.id
+                                ? "1px solid var(--primary)"
+                                : "1px solid var(--border-subtle)",
                             fontSize: "0.85rem",
                             display: "flex",
                             justifyContent: "space-between",
                             cursor: "pointer",
-                            transition: "all 0.2s"
+                            transition: "all 0.2s",
                           }}
                           onMouseEnter={(e) => {
-                            if (selectedBibleId !== b.id) e.currentTarget.style.borderColor = "var(--primary-hover)";
+                            if (selectedBibleId !== b.id)
+                              e.currentTarget.style.borderColor =
+                                "var(--primary-hover)";
                           }}
                           onMouseLeave={(e) => {
-                            if (selectedBibleId !== b.id) e.currentTarget.style.borderColor = "var(--border-subtle)";
+                            if (selectedBibleId !== b.id)
+                              e.currentTarget.style.borderColor =
+                                "var(--border-subtle)";
                           }}
                         >
                           <span
@@ -1305,7 +1550,13 @@ export default function ControlPanel() {
                           >
                             {b.name}
                           </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "8px",
+                            }}
+                          >
                             {selectedBibleId === b.id && (
                               <span
                                 style={{
@@ -1320,28 +1571,43 @@ export default function ControlPanel() {
                             <button
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (window.confirm(`Delete Bible version: ${b.name}?`)) {
+                                if (
+                                  window.confirm(
+                                    `Delete Bible version: ${b.name}?`,
+                                  )
+                                ) {
                                   try {
                                     await bibleService.deleteBible(b.id);
-                                    if (selectedBibleId === b.id) setSelectedBibleId("");
+                                    if (selectedBibleId === b.id)
+                                      setSelectedBibleId("");
                                     loadBibles();
-                                    import("react-hot-toast").then(module => module.toast.success(`Deleted ${b.name}`));
+                                    import("react-hot-toast").then((module) =>
+                                      module.toast.success(`Deleted ${b.name}`),
+                                    );
                                   } catch (err) {
-                                    console.error("Failed to delete bible", err);
+                                    console.error(
+                                      "Failed to delete bible",
+                                      err,
+                                    );
                                   }
                                 }
                               }}
                               style={{
-                                background: 'transparent',
-                                border: 'none',
-                                color: 'var(--text-muted)',
-                                cursor: 'pointer',
-                                padding: '2px',
-                                display: 'flex',
-                                alignItems: 'center'
+                                background: "transparent",
+                                border: "none",
+                                color: "var(--text-muted)",
+                                cursor: "pointer",
+                                padding: "2px",
+                                display: "flex",
+                                alignItems: "center",
                               }}
-                              onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                              onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.color = "#ef4444")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.color =
+                                  "var(--text-muted)")
+                              }
                               title="Delete Bible"
                             >
                               <X size={14} />
@@ -1363,6 +1629,32 @@ export default function ControlPanel() {
                   gap: "16px",
                 }}
               >
+                <button
+                  className="btn btn-primary"
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    padding: "8px",
+                  }}
+                  onClick={() => {
+                    setActiveSongId("");
+                    setActiveSongTitle("");
+                    setActiveSongArtist("");
+                    setLyrics("");
+                    setActiveSongSettings({
+                      layout: "LT",
+                      linesMode: 1,
+                      fontSize: 5.5,
+                    });
+                    setSongViewMode("edit");
+                  }}
+                >
+                  <Plus size={16} /> New Song
+                </button>
+
                 <label
                   className="btn btn-secondary"
                   style={{
@@ -1492,10 +1784,20 @@ export default function ControlPanel() {
                             transition: "all 0.2s",
                             display: "flex",
                             justifyContent: "space-between",
-                            alignItems: "flex-start"
+                            alignItems: "flex-start",
                           }}
                           onClick={() => {
+                            setActiveSongId(s.id);
+                            setActiveSongTitle(s.title || "");
+                            setActiveSongArtist(s.artist || "");
                             setLyrics(s.lyrics);
+                            setActiveSongSettings(
+                              s.settings || {
+                                layout: "LT",
+                                linesMode: 1,
+                                fontSize: 5.5,
+                              },
+                            );
                             setSongViewMode("play");
                           }}
                           onMouseEnter={(e) =>
@@ -1506,14 +1808,25 @@ export default function ControlPanel() {
                             (e.currentTarget.style.borderColor = "transparent")
                           }
                         >
-                          <div style={{ flex: 1, overflow: 'hidden' }}>
-                            <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</div>
+                          <div style={{ flex: 1, overflow: "hidden" }}>
+                            <div
+                              style={{
+                                fontWeight: 600,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {s.title}
+                            </div>
                             {s.artist && (
                               <div
                                 style={{
                                   fontSize: "0.75rem",
                                   color: "var(--text-muted)",
-                                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                  whiteSpace: "nowrap",
                                 }}
                               >
                                 {s.artist}
@@ -1527,24 +1840,31 @@ export default function ControlPanel() {
                                 try {
                                   await deleteSong(s.id);
                                   loadSongs();
-                                  import("react-hot-toast").then(module => module.toast.success(`Deleted ${s.title}`));
+                                  import("react-hot-toast").then((module) =>
+                                    module.toast.success(`Deleted ${s.title}`),
+                                  );
                                 } catch (err) {
                                   console.error("Failed to delete song", err);
                                 }
                               }
                             }}
                             style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: 'var(--text-muted)',
-                              cursor: 'pointer',
-                              padding: '2px',
-                              display: 'flex',
-                              alignItems: 'center',
-                              marginLeft: '8px'
+                              background: "transparent",
+                              border: "none",
+                              color: "var(--text-muted)",
+                              cursor: "pointer",
+                              padding: "2px",
+                              display: "flex",
+                              alignItems: "center",
+                              marginLeft: "8px",
                             }}
-                            onMouseEnter={(e) => e.currentTarget.style.color = '#ef4444'}
-                            onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.color = "#ef4444")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.color =
+                                "var(--text-muted)")
+                            }
                             title="Delete Song"
                           >
                             <X size={14} />
@@ -1631,8 +1951,6 @@ export default function ControlPanel() {
                 </button>
               </div>
             )}
-
-
           </div>
 
           <div className="workspace-editor">
@@ -1658,7 +1976,8 @@ export default function ControlPanel() {
                     value={fastSearchQuery}
                     onChange={(e) => handleFastSearch(e.target.value, false)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleFastSearch(fastSearchQuery, true);
+                      if (e.key === "Enter")
+                        handleFastSearch(fastSearchQuery, true);
                     }}
                   />
                 </div>
@@ -1775,12 +2094,93 @@ export default function ControlPanel() {
                 }}
               >
                 {songViewMode === "edit" ? (
-                  <textarea
-                    className="lyric-textarea"
-                    placeholder="Type or paste lyrics here. You can also import a .txt file from the sidebar!"
-                    value={lyrics}
-                    onChange={(e) => setLyrics(e.target.value)}
-                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      height: "100%",
+                    }}
+                  >
+                    <input
+                      type="text"
+                      placeholder="Song Title"
+                      value={activeSongTitle}
+                      onChange={(e) => setActiveSongTitle(e.target.value)}
+                      className="lyric-textarea"
+                      style={{
+                        height: "40px",
+                        flex: "none",
+                        background: "rgba(255,255,255,0.05)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "4px",
+                        padding: "8px",
+                        color: "white",
+                      }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="Artist"
+                      value={activeSongArtist}
+                      onChange={(e) => setActiveSongArtist(e.target.value)}
+                      className="lyric-textarea"
+                      style={{
+                        height: "40px",
+                        flex: "none",
+                        background: "rgba(255,255,255,0.05)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "4px",
+                        padding: "8px",
+                        color: "white",
+                      }}
+                    />
+                    <textarea
+                      className="lyric-textarea"
+                      placeholder="Type or paste lyrics here. You can also import a .txt file from the sidebar!"
+                      value={lyrics}
+                      onChange={(e) => setLyrics(e.target.value)}
+                      style={{
+                        flex: 1,
+                        background: "rgba(255,255,255,0.05)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "4px",
+                        padding: "8px",
+                        color: "white",
+                      }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      style={{ alignSelf: "flex-end", flex: "none" }}
+                      onClick={async () => {
+                        if (activeSongId) {
+                          await updateSong(
+                            activeSongId,
+                            activeSongTitle,
+                            activeSongArtist,
+                            lyrics,
+                            activeSongSettings,
+                          );
+                          import("react-hot-toast").then((module) =>
+                            module.toast.success("Song updated!"),
+                          );
+                        } else {
+                          const newId = await addSong(
+                            activeSongTitle,
+                            activeSongArtist,
+                            lyrics,
+                            activeSongSettings,
+                          );
+                          setActiveSongId(newId);
+                          import("react-hot-toast").then((module) =>
+                            module.toast.success("Song saved!"),
+                          );
+                        }
+                        loadSongs();
+                      }}
+                    >
+                      Save Song
+                    </button>
+                  </div>
                 ) : (
                   <div
                     style={{
@@ -1802,7 +2202,7 @@ export default function ControlPanel() {
                           textAlign: "center",
                         }}
                       >
-                        No lyrics found. Switch to the Editor to paste some
+                        No song lyrics. Switch to the Editor to paste some
                         lyrics!
                       </div>
                     ) : (
@@ -1864,7 +2264,10 @@ export default function ControlPanel() {
 
           {/* Settings & Live Controls */}
           <div className="live-controls-bar">
-            <div className="nav-row" style={{ justifyContent: 'flex-start', gap: '12px' }}>
+            <div
+              className="nav-row"
+              style={{ justifyContent: "flex-start", gap: "12px" }}
+            >
               <button
                 className="btn"
                 style={{
@@ -1874,11 +2277,15 @@ export default function ControlPanel() {
                   padding: "8px 24px",
                   fontWeight: 600,
                   borderRadius: "8px",
-                  transition: "all 0.2s"
+                  transition: "all 0.2s",
                 }}
                 onClick={handleClear}
-                onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.1)"}
-                onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.background = "rgba(255,255,255,0.1)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.background = "transparent")
+                }
               >
                 Clear (Esc)
               </button>
@@ -1895,8 +2302,12 @@ export default function ControlPanel() {
                   transition: "transform 0.2s",
                 }}
                 onClick={() => {}}
-                onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.05)"}
-                onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+                onMouseEnter={(e) =>
+                  (e.currentTarget.style.transform = "scale(1.05)")
+                }
+                onMouseLeave={(e) =>
+                  (e.currentTarget.style.transform = "scale(1)")
+                }
               >
                 Project Live
               </button>
@@ -1983,7 +2394,7 @@ export default function ControlPanel() {
                     LT
                   </button>
                 </div>
-                {liveState.layout === 'LT' && (
+                {liveState.layout === "LT" && (
                   <div
                     className="segmented-picker"
                     style={{
@@ -1991,12 +2402,14 @@ export default function ControlPanel() {
                       flexDirection: "column",
                       gap: "2px",
                       width: "100%",
-                      marginTop: "4px"
+                      marginTop: "4px",
                     }}
                   >
                     <button
                       className={`seg-btn ${liveState.bibleLowerThirdStyle === "standard" ? "active" : ""}`}
-                      onClick={() => projectLive({ bibleLowerThirdStyle: "standard" })}
+                      onClick={() =>
+                        projectLive({ bibleLowerThirdStyle: "standard" })
+                      }
                       title="Standard Lower Third"
                       style={{ fontSize: "0.7rem", padding: "4px" }}
                     >
@@ -2004,7 +2417,9 @@ export default function ControlPanel() {
                     </button>
                     <button
                       className={`seg-btn ${liveState.bibleLowerThirdStyle === "torn-edge" ? "active" : ""}`}
-                      onClick={() => projectLive({ bibleLowerThirdStyle: "torn-edge" })}
+                      onClick={() =>
+                        projectLive({ bibleLowerThirdStyle: "torn-edge" })
+                      }
                       title="Torn Edge Background"
                       style={{ fontSize: "0.7rem", padding: "4px" }}
                     >
@@ -2204,31 +2619,114 @@ export default function ControlPanel() {
               </div>
 
               <div className="control-stack">
-                <span className="control-stack-label">Text Shadow</span>
+                <span className="control-stack-label">Font Sizes (cqi)</span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                  }}
+                >
                   <div
                     style={{
+                      flex: 1,
                       display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      width: "100%",
-                      padding: "4px 8px",
-                      background: "rgba(15, 23, 42, 0.5)",
-                      border: "1px solid var(--border-subtle)",
-                      borderRadius: "6px"
+                      flexDirection: "column",
+                      gap: "4px",
                     }}
                   >
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={liveState.shadowIntensity ?? 80}
-                      onChange={(e) => projectLive({ shadowIntensity: parseInt(e.target.value) })}
-                      style={{ width: "100%" }}
-                    />
-                    <span style={{ fontSize: "0.75rem", color: "white", minWidth: "24px" }}>
-                      {liveState.shadowIntensity ?? 80}%
+                    <span
+                      style={{ fontSize: "10px", color: "var(--text-muted)" }}
+                    >
+                      Bible
                     </span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={liveState.bibleFontSize}
+                      onChange={(e) =>
+                        projectLive({ bibleFontSize: Number(e.target.value) })
+                      }
+                      style={{
+                        background: "rgba(15, 23, 42, 0.5)",
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: "4px",
+                        color: "white",
+                        padding: "6px",
+                        width: "100%",
+                        fontSize: "0.85rem",
+                      }}
+                    />
                   </div>
+                  <div
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                    }}
+                  >
+                    <span
+                      style={{ fontSize: "10px", color: "var(--text-muted)" }}
+                    >
+                      Song
+                    </span>
+                    <input
+                      type="number"
+                      step="0.5"
+                      value={liveState.songFontSize}
+                      onChange={(e) =>
+                        projectLive({ songFontSize: Number(e.target.value) })
+                      }
+                      style={{
+                        background: "rgba(15, 23, 42, 0.5)",
+                        border: "1px solid var(--border-subtle)",
+                        borderRadius: "4px",
+                        color: "white",
+                        padding: "6px",
+                        width: "100%",
+                        fontSize: "0.85rem",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="control-stack">
+                <span className="control-stack-label">Text Shadow</span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    width: "100%",
+                    padding: "4px 8px",
+                    background: "rgba(15, 23, 42, 0.5)",
+                    border: "1px solid var(--border-subtle)",
+                    borderRadius: "6px",
+                  }}
+                >
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={liveState.shadowIntensity ?? 80}
+                    onChange={(e) =>
+                      projectLive({ shadowIntensity: parseInt(e.target.value) })
+                    }
+                    style={{ width: "100%" }}
+                  />
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "white",
+                      minWidth: "24px",
+                    }}
+                  >
+                    {liveState.shadowIntensity ?? 80}%
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -2338,11 +2836,17 @@ export default function ControlPanel() {
                     className={`projected-box bg-${
                       liveState.type === "song"
                         ? "transparent"
-                        : (liveState.layout === "LT" ? !liveState.enableLowerThirdBg : liveState.transparentBackground)
-                        ? "transparent"
-                        : liveState.layout === "LT" && liveState.type === "bible" && liveState.bibleLowerThirdStyle === "torn-edge"
-                        ? "torn-edge"
-                        : "normal"
+                        : (
+                              liveState.layout === "LT"
+                                ? !liveState.enableLowerThirdBg
+                                : liveState.transparentBackground
+                            )
+                          ? "transparent"
+                          : liveState.layout === "LT" &&
+                              liveState.type === "bible" &&
+                              liveState.bibleLowerThirdStyle === "torn-edge"
+                            ? "torn-edge"
+                            : "normal"
                     } anim-${liveState.animation}`}
                     style={{
                       width:
@@ -2357,11 +2861,21 @@ export default function ControlPanel() {
                           : `${liveState.lowerThirdPadding ?? 3}cqi 4cqi`,
                       background:
                         liveState.layout === "LT"
-                          ? (!liveState.enableLowerThirdBg ? "transparent" : getRgba(liveState.lowerThirdBgColor || '#000000', liveState.lowerThirdBgOpacity ?? 50))
+                          ? !liveState.enableLowerThirdBg
+                            ? "transparent"
+                            : getRgba(
+                                liveState.lowerThirdBgColor || "#000000",
+                                liveState.lowerThirdBgOpacity ?? 50,
+                              )
                           : "transparent",
-                      textShadow: (liveState.type === "song" || (liveState.layout === "LT" ? !liveState.enableLowerThirdBg : liveState.transparentBackground)) && (liveState.shadowIntensity || 0) > 0 
-                        ? `0 ${(liveState.shadowIntensity || 0) * 0.015}cqi ${(liveState.shadowIntensity || 0) * 0.03}cqi rgba(0,0,0,${Math.min((liveState.shadowIntensity || 0) * 0.012, 1)}), 0 ${(liveState.shadowIntensity || 0) * 0.005}cqi ${(liveState.shadowIntensity || 0) * 0.01}cqi rgba(0,0,0,${Math.min((liveState.shadowIntensity || 0) * 0.008, 1)})`
-                        : "none",
+                      textShadow:
+                        (liveState.type === "song" ||
+                          (liveState.layout === "LT"
+                            ? !liveState.enableLowerThirdBg
+                            : liveState.transparentBackground)) &&
+                        (liveState.shadowIntensity || 0) > 0
+                          ? `0 ${(liveState.shadowIntensity || 0) * 0.015}cqi ${(liveState.shadowIntensity || 0) * 0.03}cqi rgba(0,0,0,${Math.min((liveState.shadowIntensity || 0) * 0.012, 1)}), 0 ${(liveState.shadowIntensity || 0) * 0.005}cqi ${(liveState.shadowIntensity || 0) * 0.01}cqi rgba(0,0,0,${Math.min((liveState.shadowIntensity || 0) * 0.008, 1)})`
+                          : "none",
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent:
@@ -2401,8 +2915,8 @@ export default function ControlPanel() {
                           liveState.type === "song"
                             ? liveState.songTextTransform
                             : liveState.type === "bible"
-                            ? liveState.bibleTextTransform
-                            : "none",
+                              ? liveState.bibleTextTransform
+                              : "none",
                         color: liveState.textColor,
                         width: "100%",
                         textAlign: liveState.horizontalAlign as any,

@@ -102,7 +102,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Subscribe to Local SSE Server for cross-device/OBS syncing
-    const unsubscribe = subscribeToLiveState('default', (state) => {
+    const unsubscribe = subscribeToLiveState((state) => {
       if (state) {
         if (state.timestamp) {
           console.warn('Ignoring old RTDB state format to prevent crash.');
@@ -123,13 +123,13 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     const updatedState = { ...liveState, ...newState };
     setLiveState(updatedState);
     localStorage.setItem('webProjectorSettings', JSON.stringify(updatedState));
-    updateLiveState('default', updatedState);
+    updateLiveState(updatedState);
   };
 
   const clearLive = () => {
     const updatedState = { ...liveState, type: 'clear' as const };
     setLiveState(updatedState);
-    updateLiveState('default', updatedState);
+    updateLiveState(updatedState);
   };
 
   return (

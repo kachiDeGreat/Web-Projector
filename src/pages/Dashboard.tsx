@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { addSong, getSongs, getBibles, addBible } from "../services/dbService";
+import { addSong, getSongs, getBibles } from "../services/dbService";
 import { bibleService } from "../services/bibleService";
 import toast from 'react-hot-toast';
 

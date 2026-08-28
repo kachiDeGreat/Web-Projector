@@ -1,6 +1,5 @@
 
 import { getDB } from './bibleService';
-import { v4 as uuidv4 } from 'uuid'; // Let's use crypto.randomUUID() instead of uuid to avoid dependencies if it's not installed.
 
 const SONG_STORE = 'songs';
 const MEDIA_STORE = 'media';
@@ -46,15 +45,31 @@ export const getMedia = async (id: string): Promise<File | null> => {
   });
 };
 
-export const addSong = async (title: string, artist: string, lyrics: string) => {
+export const addSong = async (title: string, artist: string, lyrics: string, settings?: any, customId?: string) => {
+  const db = await getDB();
+  return new Promise<string>((resolve, reject) => {
+    const tx = db.transaction(SONG_STORE, 'readwrite');
+    const store = tx.objectStore(SONG_STORE);
+    const id = customId || "song_" + Date.now();
+    const request = store.put({ id, title, artist, lyrics, settings, createdAt: Date.now() });
+    request.onsuccess = () => resolve(id);
+    request.onerror = () => reject(request.error);
+  });
+};
+
+export const updateSong = async (id: string, title: string, artist: string, lyrics: string, settings?: any) => {
   const db = await getDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(SONG_STORE, 'readwrite');
     const store = tx.objectStore(SONG_STORE);
-    const id = "song_" + Date.now();
-    const request = store.put({ id, title, artist, lyrics, createdAt: Date.now() });
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
+    const getReq = store.get(id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result || {};
+      const request = store.put({ ...existing, id, title, artist, lyrics, settings, updatedAt: Date.now() });
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    };
+    getReq.onerror = () => reject(getReq.error);
   });
 };
 
@@ -92,7 +107,7 @@ export const addBible = async (bibleData: any) => {
 };
 
 // Local Server Sync (WebSocket / SSE)
-export const updateLiveState = async (sessionId: string, state: any) => {
+export const updateLiveState = async (state: any) => {
   try {
     if (import.meta.hot) {
       import.meta.hot.send('web-projector:update', state);
@@ -110,7 +125,7 @@ export const updateLiveState = async (sessionId: string, state: any) => {
   }
 };
 
-export const subscribeToLiveState = (sessionId: string, callback: (state: any) => void) => {
+export const subscribeToLiveState = (callback: (state: any) => void) => {
   if (import.meta.hot) {
     const handler = (data: any) => callback(data);
     import.meta.hot.on('web-projector:state', handler);
