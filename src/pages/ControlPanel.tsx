@@ -205,7 +205,7 @@ export default function ControlPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `bible-song-pro-settings-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `web-projector-settings-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
       import("react-hot-toast").then((module) => module.toast.success("Settings exported successfully!"));
@@ -246,7 +246,7 @@ export default function ControlPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `bible-song-pro-songs-${new Date().toISOString().split('T')[0]}.json`;
+      a.download = `web-projector-songs-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
       import("react-hot-toast").then((module) => module.toast.success("Songs exported successfully!"));

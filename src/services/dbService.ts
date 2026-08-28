@@ -95,7 +95,7 @@ export const addBible = async (bibleData: any) => {
 export const updateLiveState = async (sessionId: string, state: any) => {
   try {
     if (import.meta.hot) {
-      import.meta.hot.send('bible-song-pro:update', state);
+      import.meta.hot.send('web-projector:update', state);
       return;
     }
     await fetch('/api/state?t=' + Date.now(), {
@@ -113,13 +113,13 @@ export const updateLiveState = async (sessionId: string, state: any) => {
 export const subscribeToLiveState = (sessionId: string, callback: (state: any) => void) => {
   if (import.meta.hot) {
     const handler = (data: any) => callback(data);
-    import.meta.hot.on('bible-song-pro:state', handler);
-    import.meta.hot.send('bible-song-pro:request-state', {});
+    import.meta.hot.on('web-projector:state', handler);
+    import.meta.hot.send('web-projector:request-state', {});
     return () => {
       // @ts-ignore
       if (import.meta.hot.off) {
         // @ts-ignore
-        import.meta.hot.off('bible-song-pro:state', handler);
+        import.meta.hot.off('web-projector:state', handler);
       }
     };
   }

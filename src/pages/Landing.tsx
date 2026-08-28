@@ -14,7 +14,7 @@ const Landing = () => {
       }}
     >
       <h1 className="animate-fade-in" style={{ marginBottom: "1rem" }}>
-        Bible Song Pro
+        Web Projector
       </h1>
       <p
         className="text-secondary animate-fade-in"

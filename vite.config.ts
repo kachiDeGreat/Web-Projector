@@ -23,9 +23,9 @@ function localMediaServer() {
   return {
     name: 'local-media-server',
     configureServer(server: ViteDevServer) {
-      server.ws.on('bible-song-pro:update', (data) => {
+      server.ws.on('web-projector:update', (data) => {
         currentLiveState = data;
-        server.ws.send('bible-song-pro:state', currentLiveState);
+        server.ws.send('web-projector:state', currentLiveState);
         
         sseClients.forEach(client => {
           client.write(`data: ${JSON.stringify(currentLiveState)}\n\n`);
@@ -33,9 +33,9 @@ function localMediaServer() {
         });
       });
 
-      server.ws.on('bible-song-pro:request-state', () => {
+      server.ws.on('web-projector:request-state', () => {
         if (currentLiveState) {
-          server.ws.send('bible-song-pro:state', currentLiveState);
+          server.ws.send('web-projector:state', currentLiveState);
         }
       });
 

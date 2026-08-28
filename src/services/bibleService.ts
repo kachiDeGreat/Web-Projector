@@ -21,7 +21,7 @@ export interface BibleVersion {
 }
 
 // Simple IndexedDB Wrapper
-const DB_NAME = 'BibleSongProDB';
+const DB_NAME = 'WebProjectorDB';
 const DB_VERSION = 3;
 const STORE_NAME = 'bibles';
 const SONG_STORE = 'songs';

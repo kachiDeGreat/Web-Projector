@@ -1,6 +1,6 @@
 @echo off
 
-echo       Starting Bible Song Pro (Local)...........
+echo       Starting Web Projector (Local)...........
 
 
 :: Check if Node.js is installed

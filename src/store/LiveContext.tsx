@@ -87,7 +87,7 @@ const LiveContext = createContext<LiveContextType | undefined>(undefined);
 
 const getInitialState = (): LiveState => {
   try {
-    const saved = localStorage.getItem('bibleSongProSettings');
+    const saved = localStorage.getItem('webProjectorSettings');
     if (saved) {
       return { ...defaultState, ...JSON.parse(saved) };
     }
@@ -108,7 +108,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           console.warn('Ignoring old RTDB state format to prevent crash.');
         } else {
           setLiveState(state);
-          localStorage.setItem('bibleSongProSettings', JSON.stringify(state));
+          localStorage.setItem('webProjectorSettings', JSON.stringify(state));
         }
       }
     });
@@ -122,7 +122,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const projectLive = (newState: Partial<LiveState>) => {
     const updatedState = { ...liveState, ...newState };
     setLiveState(updatedState);
-    localStorage.setItem('bibleSongProSettings', JSON.stringify(updatedState));
+    localStorage.setItem('webProjectorSettings', JSON.stringify(updatedState));
     updateLiveState('default', updatedState);
   };
 
