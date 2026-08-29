@@ -20,6 +20,8 @@ import {
 import "../styles/panel.css";
 import { bibleService, BibleVersion, Verse } from "../services/bibleService";
 import { useLive } from "../store/LiveContext";
+// import { AnimatedLyric } from "../components/AnimatedLyric";
+import OutputView from "./OutputView";
 import {
   getSongs,
   addSong,
@@ -57,6 +59,7 @@ export default function ControlPanel() {
   const isResizingProgram = useRef(false);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Bible State
   const [bibles, setBibles] = useState<BibleVersion[]>([]);
@@ -168,6 +171,54 @@ export default function ControlPanel() {
     }
   };
 
+  const launchProjector = async () => {
+    try {
+      // Check if Window Management API is supported
+      if ("getScreenDetails" in window) {
+        const screenDetails = await (window as any).getScreenDetails();
+
+        // Find an extended screen, fallback to the current screen if none exists
+        const externalScreen =
+          screenDetails.screens.find(
+            (s: any) => s.isExtended && s !== screenDetails.currentScreen,
+          ) || screenDetails.screens[0];
+
+        const win = window.open(
+          "/output?autoFullscreen=true",
+          "WebProjectorOutput",
+          `left=${externalScreen.left},top=${externalScreen.top},width=${externalScreen.width},height=${externalScreen.height},popup=yes,menubar=no,toolbar=no,location=no,status=no`,
+        );
+
+        if (win) {
+          import("react-hot-toast").then((module) =>
+            module.toast.success("Projector launched on extended display!"),
+          );
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Window Management API failed:", err);
+      // Fallback
+    }
+
+    // Fallback if API not supported or popup blocked
+    window.open("/output?autoFullscreen=true", "_blank");
+    import("react-hot-toast").then((module) =>
+      module.toast.success("Projector opened in new tab."),
+    );
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        launchProjector();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   useEffect(() => {
     const initData = async () => {
       await loadBibles();
@@ -179,6 +230,49 @@ export default function ControlPanel() {
   useEffect(() => {
     setRenderKey((prev) => prev + 1);
   }, [liveState.text]);
+
+  // Auto-save active song settings when liveState changes
+  useEffect(() => {
+    if (activeSongId && activeTab === "songs") {
+      const timer = setTimeout(() => {
+        const {
+          text,
+          title,
+          type,
+          backgroundMode,
+          backgroundColor,
+          backgroundUrl,
+          ...displaySettings
+        } = liveState;
+
+        updateSong(
+          activeSongId,
+          activeSongTitle,
+          activeSongArtist,
+          lyrics,
+          displaySettings,
+        )
+          .then(() => {
+            setSavedSongs((prev) =>
+              prev.map((s) =>
+                s.id === activeSongId ? { ...s, settings: displaySettings } : s,
+              ),
+            );
+          })
+          .catch((err) =>
+            console.error("Failed to auto-save song settings", err),
+          );
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [
+    liveState,
+    activeSongId,
+    activeSongTitle,
+    activeSongArtist,
+    lyrics,
+    activeTab,
+  ]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -210,12 +304,35 @@ export default function ControlPanel() {
     };
   }, []);
 
-  const handleExportSettings = async () => {
+  const handleExportSongs = async () => {
     try {
       const songs = await getSongs();
       const exportData = {
-        liveState,
         songs,
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `web-projector-songs-${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      import("react-hot-toast").then((module) =>
+        module.toast.success("Songs exported successfully!"),
+      );
+    } catch (e) {
+      import("react-hot-toast").then((module) =>
+        module.toast.error("Failed to export songs"),
+      );
+    }
+  };
+
+  const handleExportSettings = async () => {
+    try {
+      const exportData = {
+        liveState,
       };
       const blob = new Blob([JSON.stringify(exportData, null, 2)], {
         type: "application/json",
@@ -236,64 +353,24 @@ export default function ControlPanel() {
     }
   };
 
-  const handleImportSettings = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUnifiedImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
         const data = JSON.parse(event.target?.result as string);
+
+        let importedSongsCount = 0;
+        let importedSettings = false;
+
+        // If it's a global export containing liveState
         if (data.liveState) {
           projectLive(data.liveState);
+          importedSettings = true;
         }
-        if (data.songs && Array.isArray(data.songs)) {
-          for (const s of data.songs) {
-            await addSong(s.title, s.artist || "Unknown", s.lyrics);
-          }
-          loadSongs();
-        }
-        import("react-hot-toast").then((module) =>
-          module.toast.success("Settings and songs imported successfully!"),
-        );
-      } catch (err) {
-        import("react-hot-toast").then((module) =>
-          module.toast.error("Invalid JSON file"),
-        );
-      }
-    };
-    reader.readAsText(file);
-  };
 
-  const handleExportSongs = async () => {
-    try {
-      const songs = await getSongs();
-      const exportData = { songs };
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-        type: "application/json",
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `web-projector-songs-${new Date().toISOString().split("T")[0]}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
-      import("react-hot-toast").then((module) =>
-        module.toast.success("Songs exported successfully!"),
-      );
-    } catch (e) {
-      import("react-hot-toast").then((module) =>
-        module.toast.error("Failed to export songs"),
-      );
-    }
-  };
-
-  const handleImportSongs = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      try {
-        const data = JSON.parse(event.target?.result as string);
+        // If it's an export containing a songs array
         if (data.songs && Array.isArray(data.songs)) {
           for (const s of data.songs) {
             await addSong(
@@ -303,14 +380,12 @@ export default function ControlPanel() {
               s.settings,
               s.id,
             );
+            importedSongsCount++;
           }
-          loadSongs();
-          import("react-hot-toast").then((module) =>
-            module.toast.success("Songs imported successfully!"),
-          );
         } else if (Array.isArray(data)) {
+          // Fallback for older export formats where the root is an array
           for (const s of data) {
-            if (s.title && s.lyrics)
+            if (s.title && s.lyrics) {
               await addSong(
                 s.title,
                 s.artist || "Unknown",
@@ -318,14 +393,32 @@ export default function ControlPanel() {
                 s.settings,
                 s.id,
               );
+              importedSongsCount++;
+            }
           }
+        }
+
+        if (importedSongsCount > 0) {
           loadSongs();
+        }
+
+        if (importedSongsCount > 0 && importedSettings) {
           import("react-hot-toast").then((module) =>
-            module.toast.success("Songs imported successfully!"),
+            module.toast.success("Settings and songs imported successfully!"),
+          );
+        } else if (importedSongsCount > 0) {
+          import("react-hot-toast").then((module) =>
+            module.toast.success(
+              `${importedSongsCount} songs imported successfully!`,
+            ),
+          );
+        } else if (importedSettings) {
+          import("react-hot-toast").then((module) =>
+            module.toast.success("Settings imported successfully!"),
           );
         } else {
           import("react-hot-toast").then((module) =>
-            module.toast.error("No songs found in file"),
+            module.toast.error("No valid data found in file"),
           );
         }
       } catch (err) {
@@ -473,8 +566,25 @@ export default function ControlPanel() {
       .filter((l) => l.length > 0);
     const chunks: string[] = [];
     const mode = liveState.linesMode || 1;
-    for (let i = 0; i < lines.length; i += mode) {
-      chunks.push(lines.slice(i, i + mode).join("\n"));
+    let i = 0;
+    while (i < lines.length) {
+      if (lines[i].includes("_1")) {
+        chunks.push(lines[i]);
+        i += 1;
+      } else {
+        const group: string[] = [];
+        for (let j = 0; j < mode && i + j < lines.length; j++) {
+          if (lines[i + j].includes("_1")) break; // Do not group _1 lines with normal text
+          group.push(lines[i + j]);
+        }
+        if (group.length > 0) {
+          chunks.push(group.join("\n"));
+          i += group.length;
+        } else {
+          chunks.push(lines[i]);
+          i += 1;
+        }
+      }
     }
     return chunks;
   }, [lyrics, liveState.linesMode]);
@@ -1306,61 +1416,15 @@ export default function ControlPanel() {
                   Backup & Restore
                 </h4>
 
-                <h5
-                  style={{
-                    color: "var(--text-muted)",
-                    marginBottom: "8px",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Settings & Songs
-                </h5>
-                <div
-                  style={{ display: "flex", gap: "10px", marginBottom: "16px" }}
-                >
-                  <button
-                    className="btn btn-secondary"
-                    onClick={handleExportSettings}
-                  >
-                    Export All
-                  </button>
-                  <label
-                    className="btn btn-secondary"
-                    style={{
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    Import All
-                    <input
-                      type="file"
-                      accept=".json"
-                      hidden
-                      onChange={handleImportSettings}
-                    />
-                  </label>
-                </div>
-
-                <h5
-                  style={{
-                    color: "var(--text-muted)",
-                    marginBottom: "8px",
-                    fontSize: "0.85rem",
-                  }}
-                >
-                  Songs Only
-                </h5>
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button
                     className="btn btn-primary"
-                    onClick={handleExportSongs}
+                    onClick={() => setShowExportModal(true)}
                   >
-                    Export Songs
+                    Export...
                   </button>
                   <label
-                    className="btn btn-primary"
+                    className="btn btn-secondary"
                     style={{
                       cursor: "pointer",
                       display: "flex",
@@ -1368,12 +1432,12 @@ export default function ControlPanel() {
                       justifyContent: "center",
                     }}
                   >
-                    Import Songs
+                    Import
                     <input
                       type="file"
                       accept=".json"
                       hidden
-                      onChange={handleImportSongs}
+                      onChange={handleUnifiedImport}
                     />
                   </label>
                 </div>
@@ -1383,17 +1447,128 @@ export default function ControlPanel() {
         </div>
       )}
 
+      {/* Export Modal */}
+      {showExportModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.7)",
+            zIndex: 9999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          onClick={() => setShowExportModal(false)}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              padding: "24px",
+              borderRadius: "8px",
+              width: "400px",
+              maxWidth: "90vw",
+              border: "1px solid var(--border)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+              }}
+            >
+              <h3 style={{ margin: 0, color: "white" }}>Export Data</h3>
+              <button
+                className="btn btn-secondary"
+                style={{ padding: "4px" }}
+                onClick={() => setShowExportModal(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "12px" }}
+            >
+              <button
+                className="btn btn-primary"
+                style={{ padding: "16px", justifyContent: "flex-start" }}
+                onClick={() => {
+                  handleExportSongs();
+                  setShowExportModal(false);
+                }}
+              >
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ fontWeight: 600, marginBottom: "4px" }}>
+                    Export Songs Only
+                  </div>
+                  <div style={{ fontSize: "0.8rem", opacity: 0.8 }}>
+                    Exports your songs, including their individual presentation
+                    settings.
+                  </div>
+                </div>
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                style={{ padding: "16px", justifyContent: "flex-start" }}
+                onClick={() => {
+                  handleExportSettings();
+                  setShowExportModal(false);
+                }}
+              >
+                <div style={{ textAlign: "left" }}>
+                  <div style={{ fontWeight: 600, marginBottom: "4px" }}>
+                    Export Global Settings
+                  </div>
+                  <div style={{ fontSize: "0.8rem", opacity: 0.8 }}>
+                    Exports your global layout templates, bibles, and active
+                    state.
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Topbar */}
       <header className="panel-topbar">
         <div className="panel-logo">
           <BookOpen size={20} color="var(--primary)" />
-          Bible Song<span>PRO</span>
+          WEB <span>PROJECTOR</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
           <div className="status-indicator">
             <div className="status-dot online"></div>
             <span>Connected (Local IP)</span>
           </div>
+          <button
+            className="icon-btn-2 icon-btn"
+            title="Launch Projector (Ctrl+Alt+P)"
+            onClick={launchProjector}
+            style={{
+              color: "var(--primary)",
+              borderColor: "var(--primary)",
+              border: "1px solid",
+              padding: "4px 8px",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              borderRadius: "4px",
+            }}
+          >
+            <MonitorPlay size={16} />
+            <span style={{ fontSize: "0.8rem", fontWeight: 500 }}>
+              Launch Projector
+            </span>
+          </button>
           <button
             className="icon-btn"
             title="Settings"
@@ -1798,6 +1973,21 @@ export default function ControlPanel() {
                                 fontSize: 5.5,
                               },
                             );
+
+                            // Merge song's specific settings into the live projector, but keep current backgrounds
+                            if (s.settings) {
+                              const {
+                                text,
+                                title,
+                                type,
+                                backgroundMode,
+                                backgroundColor,
+                                backgroundUrl,
+                                ...displaySettings
+                              } = s.settings;
+                              projectLive(displaySettings);
+                            }
+
                             setSongViewMode("play");
                           }}
                           onMouseEnter={(e) =>
@@ -1949,6 +2139,71 @@ export default function ControlPanel() {
                 >
                   <Play size={14} style={{ marginRight: "4px" }} /> Play
                 </button>
+                <div
+                  style={{
+                    width: "1px",
+                    background: "rgba(255,255,255,0.2)",
+                    margin: "0 4px",
+                  }}
+                />
+                <button
+                  className={`btn ${liveState.enableKineticTypography ? "btn-primary" : "btn-secondary"}`}
+                  style={{
+                    padding: "4px 12px",
+                    fontSize: "0.8rem",
+                    border: "none",
+                    background: liveState.enableKineticTypography
+                      ? "var(--primary)"
+                      : "transparent",
+                  }}
+                  onClick={() =>
+                    projectLive({
+                      enableKineticTypography:
+                        !liveState.enableKineticTypography,
+                    })
+                  }
+                  title="Toggle Kinetic Typography for Songs"
+                >
+                  Kinetic Typography
+                </button>
+                {liveState.enableKineticTypography && (
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "2px",
+                      background: "var(--surface)",
+                      padding: "2px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {["slow", "medium", "fast"].map((tempo) => (
+                      <button
+                        key={tempo}
+                        style={{
+                          borderRadius: "3px",
+                          padding: "2px 8px",
+                          fontSize: "0.75rem",
+                          border: "none",
+                          cursor: "pointer",
+                          background:
+                            liveState.kineticTempo === tempo
+                              ? "var(--primary)"
+                              : "transparent",
+                          color:
+                            liveState.kineticTempo === tempo
+                              ? "#fff"
+                              : "var(--text-muted)",
+                        }}
+                        onClick={() =>
+                          projectLive({ kineticTempo: tempo as any })
+                        }
+                        title={`Set animation tempo to ${tempo}`}
+                      >
+                        {tempo.charAt(0).toUpperCase() + tempo.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -2346,8 +2601,15 @@ export default function ControlPanel() {
                   <button
                     className={`seg-btn ${liveState.linesMode === 3 ? "active" : ""}`}
                     onClick={() => {
+                      if (liveState.enableKineticTypography) return;
                       projectLive({ linesMode: 3 });
                       setActiveSongChunkIndex(null);
+                    }}
+                    style={{
+                      opacity: liveState.enableKineticTypography ? 0.3 : 1,
+                      cursor: liveState.enableKineticTypography
+                        ? "not-allowed"
+                        : "pointer",
                     }}
                   >
                     3
@@ -2355,16 +2617,41 @@ export default function ControlPanel() {
                   <button
                     className={`seg-btn ${liveState.linesMode === 4 ? "active" : ""}`}
                     onClick={() => {
+                      if (liveState.enableKineticTypography) return;
                       projectLive({ linesMode: 4 });
                       setActiveSongChunkIndex(null);
+                    }}
+                    style={{
+                      opacity: liveState.enableKineticTypography ? 0.3 : 1,
+                      cursor: liveState.enableKineticTypography
+                        ? "not-allowed"
+                        : "pointer",
                     }}
                   >
                     4
                   </button>
-                  <button className="seg-btn" onClick={() => {}}>
+                  <button
+                    className="seg-btn"
+                    onClick={() => {}}
+                    style={{
+                      opacity: liveState.enableKineticTypography ? 0.3 : 1,
+                      cursor: liveState.enableKineticTypography
+                        ? "not-allowed"
+                        : "pointer",
+                    }}
+                  >
                     5
                   </button>
-                  <button className="seg-btn" onClick={() => {}}>
+                  <button
+                    className="seg-btn"
+                    onClick={() => {}}
+                    style={{
+                      opacity: liveState.enableKineticTypography ? 0.3 : 1,
+                      cursor: liveState.enableKineticTypography
+                        ? "not-allowed"
+                        : "pointer",
+                    }}
+                  >
                     6
                   </button>
                 </div>
@@ -2775,176 +3062,10 @@ export default function ControlPanel() {
                     : "linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%, rgba(255,255,255,0.03)), linear-gradient(45deg, rgba(255,255,255,0.03) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.03) 75%, rgba(255,255,255,0.03))",
                 backgroundSize: "20px 20px",
                 backgroundPosition: "0 0, 10px 10px",
+                containerType: "inline-size",
               }}
             >
-              {liveState.backgroundMode === "image" &&
-                liveState.backgroundUrl && (
-                  <img
-                    src={liveState.backgroundUrl}
-                    alt="bg"
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      zIndex: 0,
-                    }}
-                  />
-                )}
-              {liveState.backgroundMode === "video" &&
-                liveState.backgroundUrl && (
-                  <video
-                    autoPlay
-                    loop
-                    muted
-                    playsInline
-                    style={{
-                      position: "absolute",
-                      inset: 0,
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      zIndex: 0,
-                    }}
-                  >
-                    <source src={liveState.backgroundUrl} />
-                  </video>
-                )}
-
-              {liveState.type === "clear" ? (
-                <span
-                  className="preview-placeholder"
-                  style={{ position: "relative", zIndex: 1 }}
-                >
-                  Live Preview
-                </span>
-              ) : (
-                <div
-                  key={renderKey}
-                  className={`projected-content layout-${liveState.layout} valign-${liveState.verticalAlign} halign-${liveState.horizontalAlign}`}
-                  style={{
-                    position: "relative",
-                    zIndex: 1,
-                    fontFamily: liveState.fontFamily,
-                    paddingLeft: `${liveState.paddingLR}%`,
-                    paddingRight: `${liveState.paddingLR}%`,
-                    background: "transparent",
-                  }}
-                >
-                  <div
-                    className={`projected-box bg-${
-                      liveState.type === "song"
-                        ? "transparent"
-                        : (
-                              liveState.layout === "LT"
-                                ? !liveState.enableLowerThirdBg
-                                : liveState.transparentBackground
-                            )
-                          ? "transparent"
-                          : liveState.layout === "LT" &&
-                              liveState.type === "bible" &&
-                              liveState.bibleLowerThirdStyle === "torn-edge"
-                            ? "torn-edge"
-                            : "normal"
-                    } anim-${liveState.animation}`}
-                    style={{
-                      width:
-                        liveState.layout === "LT"
-                          ? `${liveState.lowerThirdWidth}%`
-                          : "100%",
-                      padding:
-                        liveState.layout === "FS"
-                          ? liveState.transparentBackground
-                            ? "4cqi"
-                            : "6cqi"
-                          : `${liveState.lowerThirdPadding ?? 3}cqi 4cqi`,
-                      background:
-                        liveState.layout === "LT"
-                          ? !liveState.enableLowerThirdBg
-                            ? "transparent"
-                            : getRgba(
-                                liveState.lowerThirdBgColor || "#000000",
-                                liveState.lowerThirdBgOpacity ?? 50,
-                              )
-                          : "transparent",
-                      textShadow:
-                        (liveState.type === "song" ||
-                          (liveState.layout === "LT"
-                            ? !liveState.enableLowerThirdBg
-                            : liveState.transparentBackground)) &&
-                        (liveState.shadowIntensity || 0) > 0
-                          ? `0 ${(liveState.shadowIntensity || 0) * 0.015}cqi ${(liveState.shadowIntensity || 0) * 0.03}cqi rgba(0,0,0,${Math.min((liveState.shadowIntensity || 0) * 0.012, 1)}), 0 ${(liveState.shadowIntensity || 0) * 0.005}cqi ${(liveState.shadowIntensity || 0) * 0.01}cqi rgba(0,0,0,${Math.min((liveState.shadowIntensity || 0) * 0.008, 1)})`
-                          : "none",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent:
-                        liveState.layout === "FS"
-                          ? liveState.verticalAlign === "top"
-                            ? "flex-start"
-                            : liveState.verticalAlign === "bottom"
-                              ? "flex-end"
-                              : "center"
-                          : "center",
-                      gap: "1cqi",
-                    }}
-                  >
-                    {liveState.title &&
-                      liveState.type === "bible" &&
-                      liveState.refPosition === "top" && (
-                        <div
-                          className="projected-title"
-                          style={{
-                            width: "100%",
-                            textAlign: liveState.refAlign,
-                            color: liveState.refColor,
-                            fontSize: `${liveState.refFontSize * (liveState.layout === "LT" ? 0.6 : 1)}cqi`,
-                            margin: 0,
-                            marginBottom: "0.5cqi",
-                          }}
-                        >
-                          {liveState.title}
-                        </div>
-                      )}
-
-                    <div
-                      className="projected-text"
-                      style={{
-                        fontSize: `${(liveState.type === "bible" ? liveState.bibleFontSize : liveState.songFontSize) * (liveState.layout === "LT" ? 0.6 : 1)}cqi`,
-                        textTransform:
-                          liveState.type === "song"
-                            ? liveState.songTextTransform
-                            : liveState.type === "bible"
-                              ? liveState.bibleTextTransform
-                              : "none",
-                        color: liveState.textColor,
-                        width: "100%",
-                        textAlign: liveState.horizontalAlign as any,
-                      }}
-                    >
-                      {liveState.text}
-                    </div>
-
-                    {liveState.title &&
-                      liveState.type === "bible" &&
-                      liveState.refPosition === "bottom" && (
-                        <div
-                          className="projected-title"
-                          style={{
-                            width: "100%",
-                            textAlign: liveState.refAlign,
-                            color: liveState.refColor,
-                            fontSize: `${liveState.refFontSize * (liveState.layout === "LT" ? 0.6 : 1)}cqi`,
-                            margin: 0,
-                            marginTop: "0.5cqi",
-                          }}
-                        >
-                          {liveState.title}
-                        </div>
-                      )}
-                  </div>
-                </div>
-              )}
+              <OutputView isPreview={true} />
             </div>
           </div>
 

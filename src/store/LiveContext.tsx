@@ -35,6 +35,8 @@ export interface LiveState {
   bibleLowerThirdStyle: 'standard' | 'torn-edge';
   refColor: string;
   textColor: string;
+  enableKineticTypography: boolean;
+  kineticTempo: 'slow' | 'medium' | 'fast';
 }
 
 interface LiveContextType {
@@ -78,7 +80,9 @@ const defaultState: LiveState = {
   lowerThirdPadding: 3,
   bibleLowerThirdStyle: 'standard',
   refColor: '#FFFFFF',
-  textColor: '#FFFFFF'
+  textColor: '#FFFFFF',
+  enableKineticTypography: false,
+  kineticTempo: 'fast'
 };
 
 import { updateLiveState, subscribeToLiveState } from '../services/dbService';

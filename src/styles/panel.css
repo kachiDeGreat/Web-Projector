@@ -447,6 +447,13 @@
   transition: all 0.2s;
 }
 
+icon-btn-2 {
+
+  width: 250px !important;
+  height: 150px !important;
+ 
+}
+
 .icon-btn:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
