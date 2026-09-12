@@ -32,7 +32,7 @@ export interface LiveState {
   lowerThirdBgColor: string;
   lowerThirdBgOpacity: number;
   lowerThirdPadding: number;
-  bibleLowerThirdStyle: 'standard' | 'torn-edge';
+  bibleLowerThirdStyle: 'theme-1' | 'theme-2' | 'theme-3' | 'theme-4' | 'theme-5' | 'torn-edge' | 'none';
   refColor: string;
   textColor: string;
   enableKineticTypography: boolean;
@@ -78,7 +78,7 @@ const defaultState: LiveState = {
   lowerThirdBgColor: '#000000',
   lowerThirdBgOpacity: 50,
   lowerThirdPadding: 3,
-  bibleLowerThirdStyle: 'standard',
+  bibleLowerThirdStyle: 'none',
   refColor: '#FFFFFF',
   textColor: '#FFFFFF',
   enableKineticTypography: false,

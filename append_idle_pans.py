@@ -27,7 +27,17 @@ new_idle = """const IDLE_PAIRS = [
   ["idle-pan-up", "idle-pan-down"],
   ["idle-pan-down", "idle-pan-up"],
   ["idle-pan-left", "idle-pan-left"],
-  ["idle-pan-right", "idle-pan-right"]
+  ["idle-pan-right", "idle-pan-right"],
+  ["idle-pan-up", "idle-pan-up"],
+  ["idle-pan-down", "idle-pan-down"],
+  ["idle-pan-left", "idle-pan-up"],
+  ["idle-pan-left", "idle-pan-down"],
+  ["idle-pan-right", "idle-pan-up"],
+  ["idle-pan-right", "idle-pan-down"],
+  ["idle-pan-up", "idle-pan-left"],
+  ["idle-pan-up", "idle-pan-right"],
+  ["idle-pan-down", "idle-pan-left"],
+  ["idle-pan-down", "idle-pan-right"]
 ];"""
 
 content = idle_arrays_pattern.sub(new_idle, content)

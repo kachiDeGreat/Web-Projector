@@ -46,6 +46,16 @@ const STANDARD_ANIMATIONS = [
   "zoom-in-down",
   "zoom-in-left",
   "zoom-in-right",
+  "cyber-slide-in",
+  "neon-flicker-in",
+  "stomp-bounce-heavy",
+  "spin-in-expand",
+  "3d-flip-up",
+  "shatter-assemble",
+  "phantom-rise",
+  "laser-swipe",
+  "gravity-drop-bounce",
+  "liquid-melt-in",
 ];
 
 const SLOW_ANIMATIONS = [
@@ -77,7 +87,8 @@ const FAST_ANIMATIONS = [
   "whip-slam-up", "whip-slam-left", "whip-slam-right", "glitch-drop",
   "flicker-in-1", "vibrate-in", "bounce-in-fwd", "slit-in-diagonal-1",
   "swirl-in-fwd-fast", "roll-in-blurred-top", "roll-in-blurred-bottom",
-  "tilt-in-fwd-tr", "tilt-in-fwd-bl", "slide-in-blurred-tl", "slide-in-blurred-br", "bounce-in-extreme"
+  "tilt-in-fwd-tr", "tilt-in-fwd-bl", "slide-in-blurred-tl", "slide-in-blurred-br", "bounce-in-extreme",
+  "cyber-slide-in", "neon-flicker-in", "stomp-bounce-heavy", "spin-in-expand", "3d-flip-up", "shatter-assemble", "phantom-rise", "laser-swipe", "gravity-drop-bounce", "liquid-melt-in",
 ];
 
 const IDLE_PAIRS = [
@@ -86,7 +97,17 @@ const IDLE_PAIRS = [
   ["idle-pan-up", "idle-pan-down"],
   ["idle-pan-down", "idle-pan-up"],
   ["idle-pan-left", "idle-pan-left"],
-  ["idle-pan-right", "idle-pan-right"]
+  ["idle-pan-right", "idle-pan-right"],
+  ["idle-pan-up", "idle-pan-up"],
+  ["idle-pan-down", "idle-pan-down"],
+  ["idle-pan-left", "idle-pan-up"],
+  ["idle-pan-left", "idle-pan-down"],
+  ["idle-pan-right", "idle-pan-up"],
+  ["idle-pan-right", "idle-pan-down"],
+  ["idle-pan-up", "idle-pan-left"],
+  ["idle-pan-up", "idle-pan-right"],
+  ["idle-pan-down", "idle-pan-left"],
+  ["idle-pan-down", "idle-pan-right"]
 ];
 
 export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({

@@ -59,6 +59,7 @@ export default function ControlPanel() {
   const isResizingProgram = useRef(false);
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isThemesModalOpen, setIsThemesModalOpen] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
 
   // Bible State
@@ -805,6 +806,56 @@ export default function ControlPanel() {
 
   return (
     <div className="panel-layout">
+      {/* Themes Modal */}
+      {isThemesModalOpen && (
+        <div
+          className="modal-overlay"
+          onClick={() => setIsThemesModalOpen(false)}
+        >
+          <div
+            className="modal-content"
+            style={{ width: "600px", padding: "20px", background: "rgba(10, 15, 25, 0.98)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "12px" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px", alignItems: "center" }}>
+              <h2 style={{ margin: 0, fontSize: "1.2rem", color: "var(--text-primary)" }}>Select Theme</h2>
+              <button className="icon-btn" onClick={() => setIsThemesModalOpen(false)}><X size={20} /></button>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+              {[
+                { id: "none", name: "Standard (No Theme)" },
+                { id: "torn-edge", name: "Torn Edge" },
+                { id: "theme-1", name: "Theme 1 (Left Pill)" },
+                { id: "theme-2", name: "Theme 2 (Centered Pill)" },
+                { id: "theme-3", name: "Theme 3 (Left Edge Pill)" },
+                { id: "theme-4", name: "Theme 4 (Full Width)" },
+                { id: "theme-5", name: "Theme 5 (Transparent)" }
+              ].map(theme => (
+                <div
+                  key={theme.id}
+                  style={{
+                    background: liveState.bibleLowerThirdStyle === theme.id ? "rgba(59, 130, 246, 0.2)" : "rgba(255,255,255,0.05)",
+                    border: `1px solid ${liveState.bibleLowerThirdStyle === theme.id ? "var(--primary)" : "rgba(255,255,255,0.1)"}`,
+                    borderRadius: "8px",
+                    padding: "16px",
+                    cursor: "pointer",
+                    textAlign: "center",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "12px",
+                    transition: "all 0.2s"
+                  }}
+                  onClick={() => { projectLive({ bibleLowerThirdStyle: theme.id as any }); setIsThemesModalOpen(false); }}
+                >
+                  <span style={{ fontSize: "0.9rem", color: "white", fontWeight: "bold" }}>{theme.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Settings Modal */}
       {isSettingsOpen && (
         <div
@@ -2682,37 +2733,14 @@ export default function ControlPanel() {
                   </button>
                 </div>
                 {liveState.layout === "LT" && (
-                  <div
-                    className="segmented-picker"
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "2px",
-                      width: "100%",
-                      marginTop: "4px",
-                    }}
+                  <button
+                    className="action-btn"
+                    style={{ marginTop: "8px", padding: "6px 8px", fontSize: "0.8rem", width: "100%" }}
+                    onClick={() => setIsThemesModalOpen(true)}
+                    title="Choose Lower Third Theme"
                   >
-                    <button
-                      className={`seg-btn ${liveState.bibleLowerThirdStyle === "standard" ? "active" : ""}`}
-                      onClick={() =>
-                        projectLive({ bibleLowerThirdStyle: "standard" })
-                      }
-                      title="Standard Lower Third"
-                      style={{ fontSize: "0.7rem", padding: "4px" }}
-                    >
-                      Std
-                    </button>
-                    <button
-                      className={`seg-btn ${liveState.bibleLowerThirdStyle === "torn-edge" ? "active" : ""}`}
-                      onClick={() =>
-                        projectLive({ bibleLowerThirdStyle: "torn-edge" })
-                      }
-                      title="Torn Edge Background"
-                      style={{ fontSize: "0.7rem", padding: "4px" }}
-                    >
-                      Torn
-                    </button>
-                  </div>
+                    Themes
+                  </button>
                 )}
               </div>
 

@@ -593,3 +593,113 @@ icon-btn-2 {
     background: var(--primary-hover);
   }
 }
+
+/* Bible Lower Third Themes */
+
+/* Theme 1: Left Pill */
+.theme-1 .projected-box {
+  position: relative;
+  overflow: visible !important;
+  margin-top: 2cqi;
+}
+.theme-1 .projected-title {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateY(-50%);
+  background: white;
+  color: black !important;
+  padding: 0.5cqi 2cqi;
+  border-radius: 0.5cqi;
+  margin: 0 !important;
+  width: auto !important;
+  white-space: nowrap;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+/* Theme 2: Centered Pill */
+.theme-2 .projected-box {
+  position: relative;
+  overflow: visible !important;
+  margin-top: 2cqi;
+}
+.theme-2 .projected-title {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  color: black !important;
+  padding: 0.5cqi 2cqi;
+  border-radius: 0.5cqi;
+  margin: 0 !important;
+  width: auto !important;
+  white-space: nowrap;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+/* Theme 3: Left Edge Pill */
+.theme-3 .projected-box {
+  position: relative;
+  overflow: visible !important;
+  margin-top: 2cqi;
+  border-left: none;
+}
+.theme-3 .projected-title {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translateY(-50%);
+  background: white;
+  color: black !important;
+  padding: 0.5cqi 2cqi;
+  border-radius: 0 0.5cqi 0.5cqi 0;
+  margin: 0 !important;
+  width: auto !important;
+  white-space: nowrap;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+/* Theme 4: Full Width Block */
+.theme-4 .projected-box {
+  position: relative;
+  overflow: visible !important;
+  margin-top: 3cqi;
+  width: 100% !important;
+  border-radius: 0;
+}
+.theme-4 .projected-title {
+  position: absolute;
+  bottom: 100%;
+  left: 4cqi;
+  background: white;
+  color: black !important;
+  padding: 0.5cqi 2cqi;
+  border-radius: 0.5cqi 0.5cqi 0 0;
+  margin: 0 !important;
+  width: auto !important;
+  white-space: nowrap;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+/* Theme 5: Transparent Background */
+.theme-5 .projected-box {
+  position: relative;
+  overflow: visible !important;
+  background: transparent !important;
+  padding-top: 4cqi !important;
+}
+.theme-5 .projected-title {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  color: black !important;
+  padding: 0.5cqi 2cqi;
+  border-radius: 0.5cqi;
+  margin: 0 !important;
+  width: auto !important;
+  white-space: nowrap;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}

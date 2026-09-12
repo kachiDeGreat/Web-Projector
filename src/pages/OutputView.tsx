@@ -152,6 +152,8 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
       bgClass = "torn-edge";
     }
 
+    const themeClass = state.layout === "LT" && state.type === "bible" && state.bibleLowerThirdStyle !== "none" ? state.bibleLowerThirdStyle : "";
+
     const shadowVal =
       isBgTransparent && state.shadowIntensity > 0
         ? `0 ${state.shadowIntensity * 0.015}cqi ${state.shadowIntensity * 0.03}cqi rgba(0,0,0,${Math.min(state.shadowIntensity * 0.012, 1)}), 0 ${state.shadowIntensity * 0.005}cqi ${state.shadowIntensity * 0.01}cqi rgba(0,0,0,${Math.min(state.shadowIntensity * 0.008, 1)})`
@@ -160,7 +162,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
     return (
       <div
         key={isOutgoing ? "outgoing" : "display-" + state.text + state.title}
-        className={`projected-content layout-${state.layout} valign-${state.verticalAlign} halign-${state.horizontalAlign}`}
+        className={`projected-content layout-${state.layout} valign-${state.verticalAlign} halign-${state.horizontalAlign} ${themeClass}`}
         style={{
           position: "absolute",
           zIndex: isOutgoing ? 1 : 2,
