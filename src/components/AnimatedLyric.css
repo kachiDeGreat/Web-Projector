@@ -681,8 +681,8 @@
 @keyframes stomp-bounce-heavy { 
   0% { opacity: 0; transform: scale(4) translateY(-100px); font-weight: 900; }
   40% { opacity: 1; transform: scale(0.8) translateY(20px); font-weight: 900; }
-  70% { transform: scale(1.1) translateY(-10px); }
-  100% { transform: scale(1) translateY(0); }
+  70% { opacity: 1; transform: scale(1.1) translateY(-10px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 
 .animate-spin-in-expand { animation-name: spin-in-expand; animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275); }
@@ -719,15 +719,15 @@
 @keyframes gravity-drop-bounce { 
   0% { opacity: 0; transform: translateY(-300px); }
   60% { opacity: 1; transform: translateY(0); animation-timing-function: ease-out; }
-  75% { transform: translateY(-40px); animation-timing-function: ease-in; }
-  90% { transform: translateY(0); animation-timing-function: ease-out; }
-  95% { transform: translateY(-10px); animation-timing-function: ease-in; }
-  100% { transform: translateY(0); }
+  75% { opacity: 1; transform: translateY(-40px); animation-timing-function: ease-in; }
+  90% { opacity: 1; transform: translateY(0); animation-timing-function: ease-out; }
+  95% { opacity: 1; transform: translateY(-10px); animation-timing-function: ease-in; }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 .animate-liquid-melt-in { animation-name: liquid-melt-in; animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 @keyframes liquid-melt-in { 
   0% { opacity: 0; transform: scaleY(3) scaleX(0.2) translateY(-50px); filter: blur(4px); }
   50% { opacity: 1; transform: scaleY(0.5) scaleX(1.5) translateY(20px); filter: blur(0); }
-  100% { transform: scaleY(1) scaleX(1) translateY(0); }
+  100% { opacity: 1; transform: scaleY(1) scaleX(1) translateY(0); }
 }

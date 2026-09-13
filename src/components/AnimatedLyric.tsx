@@ -4,7 +4,8 @@ import "./AnimatedLyric.css";
 interface AnimatedLyricProps {
   text: string;
   isEnabled?: boolean; // Controls whether animation is on or off
-  kineticTempo?: 'slow' | 'medium' | 'fast' | 'random';
+  kineticTempo?: "slow" | "medium" | "fast" | "random";
+  introAnimation?: string; // Specific intro animation to use
 }
 
 // 60 Awesome kinetic animations! (Added more to ensure extreme variety)
@@ -59,61 +60,131 @@ const STANDARD_ANIMATIONS = [
 ];
 
 const SLOW_ANIMATIONS = [
-  "fade-in", "fade-blur-in", "slide-up", "slide-down", "slide-left", "slide-right", "zoom-in",
-  "cinematic-unmask", "slow-rise-blur", "majestic-fade-track", "ghost-reveal",
-  "fade-in-up-slow", "fade-in-down-slow", "zoom-in-soft", "rotate-in-slow",
-  "slide-up-fade", "slide-down-fade", "slide-left-fade", "slide-right-fade",
-  "blur-expand", "blur-contract", "tilt-in-fwd-up", "tilt-in-fwd-down",
-  "tilt-in-bottom-1", "tilt-in-top-1", "focus-in", "focus-in-expand"
+  "fade-in",
+  "fade-blur-in",
+  "slide-up",
+  "slide-down",
+  "slide-left",
+  "slide-right",
+  "zoom-in",
+  "cinematic-unmask",
+  "slow-rise-blur",
+  "majestic-fade-track",
+  "ghost-reveal",
+  "fade-in-up-slow",
+  "fade-in-down-slow",
+  "zoom-in-soft",
+  "rotate-in-slow",
+  "slide-up-fade",
+  "slide-down-fade",
+  "slide-left-fade",
+  "slide-right-fade",
+  "blur-expand",
+  "blur-contract",
+  "tilt-in-fwd-up",
+  "tilt-in-fwd-down",
+  "tilt-in-bottom-1",
+  "tilt-in-top-1",
+  "focus-in",
+  "focus-in-expand",
 ];
 
 const MEDIUM_ANIMATIONS = [
-  "bounce-in", "bounce-up", "bounce-down", "bounce-left", "bounce-right",
-  "roll-in-left", "roll-in-right", "roll-in-top", "roll-in-bottom",
-  "zoom-in-up", "zoom-in-down", "zoom-in-left", "zoom-in-right",
-  "spring-up", "spring-down", "spring-left", "spring-right", "fade-drop-in", "rotate-in", "zoom-in-bounce",
-  "elastic-drop", "cartwheel-in", "flip-bounce-y", "rubber-snap",
-  "swirl-in-fwd", "swirl-in-bck", "slit-in-vertical", "slit-in-horizontal",
-  "bounce-in-top", "bounce-in-bottom", "roll-in-blurred-left", "roll-in-blurred-right",
-  "slide-in-elliptic-top-fwd", "slide-in-elliptic-bottom-fwd", "puff-in-center",
-  "swing-in-top-fwd", "swing-in-bottom-fwd", "swing-in-left-fwd", "swing-in-right-fwd", "scale-up-center"
+  "bounce-in",
+  "bounce-up",
+  "bounce-down",
+  "bounce-left",
+  "bounce-right",
+  "roll-in-left",
+  "roll-in-right",
+  "roll-in-top",
+  "roll-in-bottom",
+  "zoom-in-up",
+  "zoom-in-down",
+  "zoom-in-left",
+  "zoom-in-right",
+  "spring-up",
+  "spring-down",
+  "spring-left",
+  "spring-right",
+  "fade-drop-in",
+  "rotate-in",
+  "zoom-in-bounce",
+  "elastic-drop",
+  "cartwheel-in",
+  "flip-bounce-y",
+  "rubber-snap",
+  "swirl-in-fwd",
+  "swirl-in-bck",
+  "slit-in-vertical",
+  "slit-in-horizontal",
+  "bounce-in-top",
+  "bounce-in-bottom",
+  "roll-in-blurred-left",
+  "roll-in-blurred-right",
+  "slide-in-elliptic-top-fwd",
+  "slide-in-elliptic-bottom-fwd",
+  "puff-in-center",
+  "swing-in-top-fwd",
+  "swing-in-bottom-fwd",
+  "swing-in-left-fwd",
+  "swing-in-right-fwd",
+  "scale-up-center",
 ];
 
 const FAST_ANIMATIONS = [
-  "stomp-pop", "cinematic-flash", "whip-zoom", "stomp-drop",
-  "whip-pan-left", "whip-pan-right", "whip-pan-up", "whip-pan-down",
-  "light-speed-in-right", "light-speed-in-left",
-  "hyper-stomp", "flash-bang-zoom", "shatter-in", "whip-slam",
-  "whip-slam-up", "whip-slam-left", "whip-slam-right", "glitch-drop",
-  "flicker-in-1", "vibrate-in", "bounce-in-fwd", "slit-in-diagonal-1",
-  "swirl-in-fwd-fast", "roll-in-blurred-top", "roll-in-blurred-bottom",
-  "tilt-in-fwd-tr", "tilt-in-fwd-bl", "slide-in-blurred-tl", "slide-in-blurred-br", "bounce-in-extreme",
-  "cyber-slide-in", "neon-flicker-in", "stomp-bounce-heavy", "spin-in-expand", "3d-flip-up", "shatter-assemble", "phantom-rise", "laser-swipe", "gravity-drop-bounce", "liquid-melt-in",
+  "stomp-pop",
+  "cinematic-flash",
+  "whip-zoom",
+  "stomp-drop",
+  "whip-pan-left",
+  "whip-pan-right",
+  "whip-pan-up",
+  "whip-pan-down",
+  "light-speed-in-right",
+  "light-speed-in-left",
+  "hyper-stomp",
+  "flash-bang-zoom",
+  "shatter-in",
+  "whip-slam",
+  "whip-slam-up",
+  "whip-slam-left",
+  "whip-slam-right",
+  "glitch-drop",
+  "flicker-in-1",
+  "vibrate-in",
+  "bounce-in-fwd",
+  "slit-in-diagonal-1",
+  "swirl-in-fwd-fast",
+  "roll-in-blurred-top",
+  "roll-in-blurred-bottom",
+  "tilt-in-fwd-tr",
+  "tilt-in-fwd-bl",
+  "slide-in-blurred-tl",
+  "slide-in-blurred-br",
+  "bounce-in-extreme",
+  "cyber-slide-in",
+  "neon-flicker-in",
+  "stomp-bounce-heavy",
+  "spin-in-expand",
+  "3d-flip-up",
+  "shatter-assemble",
+  "phantom-rise",
+  "laser-swipe",
+  "gravity-drop-bounce",
+  "liquid-melt-in",
 ];
 
 const IDLE_PAIRS = [
   ["idle-pan-left", "idle-pan-right"],
   ["idle-pan-right", "idle-pan-left"],
-  ["idle-pan-up", "idle-pan-down"],
-  ["idle-pan-down", "idle-pan-up"],
-  ["idle-pan-left", "idle-pan-left"],
-  ["idle-pan-right", "idle-pan-right"],
-  ["idle-pan-up", "idle-pan-up"],
-  ["idle-pan-down", "idle-pan-down"],
-  ["idle-pan-left", "idle-pan-up"],
-  ["idle-pan-left", "idle-pan-down"],
-  ["idle-pan-right", "idle-pan-up"],
-  ["idle-pan-right", "idle-pan-down"],
-  ["idle-pan-up", "idle-pan-left"],
-  ["idle-pan-up", "idle-pan-right"],
-  ["idle-pan-down", "idle-pan-left"],
-  ["idle-pan-down", "idle-pan-right"]
 ];
 
 export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
   text,
   isEnabled = true,
-  kineticTempo = 'fast',
+  kineticTempo = "fast",
+  introAnimation,
 }) => {
   // Determine if it's a multiline repetition
   const { isVerticalMarquee, isHorizontalMarquee, displayLines } =
@@ -153,49 +224,58 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
     }, [text]);
 
   const baseDuration = useMemo(() => {
-    if (kineticTempo === 'slow') return '1.8s';
-    if (kineticTempo === 'medium') return '0.8s';
-    return '0.35s';
+    if (kineticTempo === "slow") return "1.8s";
+    if (kineticTempo === "medium") return "0.8s";
+    return "0.35s";
   }, [kineticTempo]);
 
   const marqueeDurationX = useMemo(() => {
-    if (kineticTempo === 'slow') return '25s';
-    if (kineticTempo === 'medium') return '15s';
-    if (kineticTempo === 'fast') return '7s';
-    return '15s';
+    if (kineticTempo === "slow") return "25s";
+    if (kineticTempo === "medium") return "15s";
+    if (kineticTempo === "fast") return "7s";
+    return "15s";
   }, [kineticTempo]);
 
   const idleDuration = useMemo(() => {
-    if (kineticTempo === 'slow') return '10s';
-    if (kineticTempo === 'medium') return '6s';
-    if (kineticTempo === 'fast') return '3s';
-    return '6s';
+    if (kineticTempo === "slow") return "10s";
+    if (kineticTempo === "medium") return "6s";
+    if (kineticTempo === "fast") return "3s";
+    return "6s";
   }, [kineticTempo]);
 
   const marqueeDurationY = useMemo(() => {
-    if (kineticTempo === 'slow') return '8s';
-    if (kineticTempo === 'medium') return '5s';
-    if (kineticTempo === 'fast') return '2.5s';
-    return '5s';
+    if (kineticTempo === "slow") return "8s";
+    if (kineticTempo === "medium") return "5s";
+    if (kineticTempo === "fast") return "2.5s";
+    return "5s";
   }, [kineticTempo]);
 
   // Pick random animations per line (up to 2 lines for standard lyrics)
   const lineAnimations = useMemo(() => {
     if (isVerticalMarquee || isHorizontalMarquee) return [];
 
+    if (introAnimation) {
+      return [introAnimation, introAnimation];
+    }
+
     let animPool = STANDARD_ANIMATIONS;
-    if (kineticTempo === 'slow') animPool = SLOW_ANIMATIONS;
-    if (kineticTempo === 'medium') animPool = MEDIUM_ANIMATIONS;
-    if (kineticTempo === 'fast') animPool = FAST_ANIMATIONS;
-    if (kineticTempo === 'random') animPool = STANDARD_ANIMATIONS;
+    if (kineticTempo === "slow") animPool = SLOW_ANIMATIONS;
+    if (kineticTempo === "medium") animPool = MEDIUM_ANIMATIONS;
+    if (kineticTempo === "fast") animPool = FAST_ANIMATIONS;
+    if (kineticTempo === "random") animPool = STANDARD_ANIMATIONS;
 
     // Pick different random animations for line 1 and line 2
-    const getRand = () =>
-      animPool[Math.floor(Math.random() * animPool.length)];
+    const getRand = () => animPool[Math.floor(Math.random() * animPool.length)];
 
     // 100% chance completely random for massive variety
     return [getRand(), getRand()];
-  }, [isVerticalMarquee, isHorizontalMarquee, text, kineticTempo]); // re-roll on text change
+  }, [
+    isVerticalMarquee,
+    isHorizontalMarquee,
+    text,
+    kineticTempo,
+    introAnimation,
+  ]); // re-roll on text change
 
   const lineIdleAnimations = useMemo(() => {
     return IDLE_PAIRS[Math.floor(Math.random() * IDLE_PAIRS.length)];
@@ -221,7 +301,10 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
             animationFillMode: "forwards",
           }}
         >
-          <div className="marquee-content-x" style={{ animationDuration: marqueeDurationX }}>
+          <div
+            className="marquee-content-x"
+            style={{ animationDuration: marqueeDurationX }}
+          >
             {Array.from({ length: 10 }).map((_, i) => (
               <span key={i} style={{ paddingRight: "1.5vw" }}>
                 {displayLines[0]}
@@ -232,7 +315,10 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
       )}
 
       {isVerticalMarquee && (
-        <div className="marquee-content-y" style={{ animationDuration: marqueeDurationY }}>
+        <div
+          className="marquee-content-y"
+          style={{ animationDuration: marqueeDurationY }}
+        >
           {/* We take the first line and repeat it vertically */}
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="marquee-y-item">
