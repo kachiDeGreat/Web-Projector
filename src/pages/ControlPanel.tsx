@@ -89,7 +89,7 @@ export default function ControlPanel() {
     number | null
   >(null);
 
-  const { liveState, projectLive, clearLive } = useLive();
+  const { liveState, projectLive, clearLive, saveGlobalSettings } = useLive();
 
   const [renderKey, setRenderKey] = useState(0);
 
@@ -1492,6 +1492,27 @@ export default function ControlPanel() {
                     />
                   </label>
                 </div>
+              </div>
+
+              <div
+                style={{
+                  borderTop: "1px solid var(--border-subtle)",
+                  marginTop: "10px",
+                  paddingTop: "20px",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    saveGlobalSettings();
+                    setIsSettingsOpen(false);
+                  }}
+                  style={{ padding: "10px 24px", fontWeight: "bold" }}
+                >
+                  Save Global Settings
+                </button>
               </div>
             </div>
           </div>

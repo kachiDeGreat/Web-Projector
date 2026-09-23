@@ -42,8 +42,9 @@ export interface LiveState {
 interface LiveContextType {
   liveState: LiveState;
   setLiveState: React.Dispatch<React.SetStateAction<LiveState>>;
-  projectLive: (newState: Partial<LiveState>) => void;
+  projectLive: (newState: Partial<LiveState>, forceGlobalStyle?: boolean) => void;
   clearLive: () => void;
+  saveGlobalSettings: () => void;
 }
 
 const defaultState: LiveState = {
@@ -112,7 +113,6 @@ export function LiveProvider({ children }: { children: ReactNode }) {
           console.warn('Ignoring old RTDB state format to prevent crash.');
         } else {
           setLiveState(state);
-          localStorage.setItem('webProjectorSettings', JSON.stringify(state));
         }
       }
     });
@@ -123,21 +123,33 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const projectLive = (newState: Partial<LiveState>) => {
-    const updatedState = { ...liveState, ...newState };
+  const saveGlobalSettings = () => {
+    localStorage.setItem('webProjectorSettings', JSON.stringify(liveState));
+    import("react-hot-toast").then((module) => module.toast.success("Global styles saved successfully!"));
+  };
+
+  const projectLive = (newState: Partial<LiveState>, forceGlobalStyle: boolean = false) => {
+    let baseState = liveState;
+    if (forceGlobalStyle || ((newState.type === 'bible' || newState.type === 'clear') && liveState.type === 'song')) {
+      baseState = { ...baseState, ...getInitialState() };
+    }
+    const updatedState = { ...baseState, ...newState };
     setLiveState(updatedState);
-    localStorage.setItem('webProjectorSettings', JSON.stringify(updatedState));
     updateLiveState(updatedState);
   };
 
   const clearLive = () => {
-    const updatedState = { ...liveState, type: 'clear' as const };
+    let baseState = liveState;
+    if (liveState.type === 'song') {
+      baseState = { ...baseState, ...getInitialState() };
+    }
+    const updatedState = { ...baseState, type: 'clear' as const };
     setLiveState(updatedState);
     updateLiveState(updatedState);
   };
 
   return (
-    <LiveContext.Provider value={{ liveState, setLiveState, projectLive, clearLive }}>
+    <LiveContext.Provider value={{ liveState, setLiveState, projectLive, clearLive, saveGlobalSettings }}>
       {children}
     </LiveContext.Provider>
   );
