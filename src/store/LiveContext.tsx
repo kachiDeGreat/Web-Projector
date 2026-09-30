@@ -42,7 +42,7 @@ export interface LiveState {
 interface LiveContextType {
   liveState: LiveState;
   setLiveState: React.Dispatch<React.SetStateAction<LiveState>>;
-  projectLive: (newState: Partial<LiveState>, forceGlobalStyle?: boolean) => void;
+  projectLive: (newState: Partial<LiveState>, forceGlobalStyle?: boolean, isSongInjection?: boolean) => void;
   clearLive: () => void;
   saveGlobalSettings: () => void;
 }
@@ -128,7 +128,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     import("react-hot-toast").then((module) => module.toast.success("Global styles saved successfully!"));
   };
 
-  const projectLive = (newState: Partial<LiveState>, forceGlobalStyle: boolean = false) => {
+  const projectLive = (newState: Partial<LiveState>, forceGlobalStyle: boolean = false, isSongInjection: boolean = false) => {
     let baseState = liveState;
     if (forceGlobalStyle || ((newState.type === 'bible' || newState.type === 'clear') && liveState.type === 'song')) {
       baseState = { ...baseState, ...getInitialState() };
@@ -136,6 +136,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     const updatedState = { ...baseState, ...newState };
     setLiveState(updatedState);
     updateLiveState(updatedState);
+
+    if (newState.type !== 'bible' && newState.type !== 'song' && newState.type !== 'clear' && !isSongInjection) {
+      const saved = getInitialState();
+      const nextGlobal = { ...saved, ...newState };
+      localStorage.setItem('webProjectorSettings', JSON.stringify(nextGlobal));
+    }
   };
 
   const clearLive = () => {

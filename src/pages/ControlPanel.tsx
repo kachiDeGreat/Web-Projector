@@ -368,6 +368,7 @@ export default function ControlPanel() {
         // If it's a global export containing liveState
         if (data.liveState) {
           projectLive(data.liveState);
+          localStorage.setItem('webProjectorSettings', JSON.stringify(data.liveState));
           importedSettings = true;
         }
 
@@ -2057,7 +2058,7 @@ export default function ControlPanel() {
                                 backgroundUrl,
                                 ...displaySettings
                               } = s.settings;
-                              projectLive(displaySettings);
+                              projectLive(displaySettings, false, true);
                             }
 
                             setSongViewMode("play");
