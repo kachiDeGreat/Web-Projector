@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useLive } from "../store/LiveContext";
 import { AnimatedLyric } from "../components/AnimatedLyric";
+import { motion, AnimatePresence } from "framer-motion";
 
 const getRgba = (hex: string, opacity: number) => {
   if (!hex) return `rgba(0, 0, 0, ${opacity / 100})`;
@@ -12,32 +13,6 @@ const getRgba = (hex: string, opacity: number) => {
 
 const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
   const { liveState } = useLive();
-  const [displayState, setDisplayState] = useState(liveState);
-  const [outgoingState, setOutgoingState] = useState<any>(null);
-
-  useEffect(() => {
-    setDisplayState((prev) => {
-      if (
-        liveState.text !== prev.text ||
-        liveState.title !== prev.title ||
-        liveState.type !== prev.type
-      ) {
-        if (prev.type !== "clear" && liveState.animation !== "none") {
-          setOutgoingState(prev);
-          setTimeout(
-            () => {
-              setOutgoingState(null);
-            },
-            liveState.enableKineticTypography ? 300 : 800,
-          );
-        } else {
-          setOutgoingState(null);
-        }
-        return liveState;
-      }
-      return liveState;
-    });
-  }, [liveState]);
 
   const isExternalWindow = new URLSearchParams(window.location.search).get("autoFullscreen") === "true";
 
@@ -126,7 +101,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
     return null;
   };
 
-  const renderProjectedContent = (state: any, isOutgoing: boolean) => {
+  const renderProjectedContent = (state: any) => {
     if (!state || state.type === "clear") return null;
 
     const isBgTransparent =
@@ -136,11 +111,6 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
           ? !state.enableLowerThirdBg
           : state.transparentBackground;
     const isKinetic = state.type === "song" && state.enableKineticTypography;
-    const animClass = isOutgoing
-      ? isKinetic
-        ? "kinetic-out"
-        : `anim-${state.animation}-out`
-      : `anim-${state.animation}-in`;
 
     let bgClass = isBgTransparent ? "transparent" : "normal";
     if (
@@ -159,13 +129,48 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
         ? `0 ${state.shadowIntensity * 0.015}cqi ${state.shadowIntensity * 0.03}cqi rgba(0,0,0,${Math.min(state.shadowIntensity * 0.012, 1)}), 0 ${state.shadowIntensity * 0.005}cqi ${state.shadowIntensity * 0.01}cqi rgba(0,0,0,${Math.min(state.shadowIntensity * 0.008, 1)})`
         : "none";
 
+    const transition = { duration: 0.8, ease: [0.16, 1, 0.3, 1] };
+    
+    let variants = {};
+    if (isKinetic) {
+      variants = {
+        initial: { opacity: 1 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0, scale: 0.9, filter: "blur(10px)", transition: { duration: 0.3 } }
+      };
+    } else if (state.animation === "zoom") {
+      variants = {
+        initial: { opacity: 0, scale: 0.9, filter: "blur(6px)" },
+        animate: { opacity: 1, scale: 1, filter: "blur(0px)", transition },
+        exit: { opacity: 0, scale: 1.1, filter: "blur(6px)", transition }
+      };
+    } else if (state.animation === "slide") {
+      variants = {
+        initial: { opacity: 0, y: "4cqi", filter: "blur(4px)" },
+        animate: { opacity: 1, y: 0, filter: "blur(0px)", transition },
+        exit: { opacity: 0, y: "-4cqi", filter: "blur(4px)", transition }
+      };
+    } else if (state.animation === "fade") {
+      variants = {
+        initial: { opacity: 0 },
+        animate: { opacity: 1, transition },
+        exit: { opacity: 0, transition }
+      };
+    } else {
+      variants = {
+        initial: { opacity: 1 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0, transition: { duration: 0.1 } }
+      };
+    }
+
     return (
-      <div
-        key={isOutgoing ? "outgoing" : "display-" + state.text + state.title}
+      <motion.div
+        key={"display-" + state.text + state.title}
         className={`projected-content layout-${state.layout} valign-${state.verticalAlign} halign-${state.horizontalAlign} ${themeClass}`}
         style={{
           position: "absolute",
-          zIndex: isOutgoing ? 1 : 2,
+          zIndex: 2,
           fontFamily: state.fontFamily,
           paddingLeft: `${state.paddingLR}%`,
           paddingRight: `${state.paddingLR}%`,
@@ -174,9 +179,13 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
           background: "transparent",
           color: state.textColor || "#ffffff",
         }}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        variants={variants}
       >
         <div
-          className={`projected-box bg-${bgClass} ${isKinetic && !isOutgoing ? "" : animClass}`}
+          className={`projected-box bg-${bgClass}`}
           style={{
             width: state.layout === "LT" ? `${state.lowerThirdWidth}%` : "100%",
             height: state.layout === "FS" ? "100%" : "auto",
@@ -298,7 +307,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
               </div>
             )}
         </div>
-      </div>
+      </motion.div>
     );
   };
 
@@ -323,8 +332,9 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
       }}
     >
       {renderBackground()}
-      {renderProjectedContent(outgoingState, true)}
-      {renderProjectedContent(displayState, false)}
+      <AnimatePresence mode="sync">
+        {renderProjectedContent(liveState)}
+      </AnimatePresence>
       {!document.fullscreenElement && (
         <div
           style={{

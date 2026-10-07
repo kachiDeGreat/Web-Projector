@@ -16,42 +16,54 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
+  Sparkles,
+  RotateCcw,
+  Check,
+  Trash2,
+  Eye,
 } from "lucide-react";
 import "../styles/panel.css";
 import { bibleService, BibleVersion, Verse } from "../services/bibleService";
-import { useLive } from "../store/LiveContext";
-// import { AnimatedLyric } from "../components/AnimatedLyric";
+import { useLive, SongSettings } from "../store/LiveContext";
+import { AnimatedLyric } from "../components/AnimatedLyric";
 import OutputView from "./OutputView";
 import {
   getSongs,
   addSong,
   deleteSong,
   updateSong,
+  deleteAllSongs,
 } from "../services/dbService";
-
-const getRgba = (hex: string, opacity: number) => {
-  if (!hex) return `rgba(0, 0, 0, ${opacity / 100})`;
-  const r = parseInt(hex.slice(1, 3), 16) || 0;
-  const g = parseInt(hex.slice(3, 5), 16) || 0;
-  const b = parseInt(hex.slice(5, 7), 16) || 0;
-  return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
-};
 
 export default function ControlPanel() {
   const [savedSongs, setSavedSongs] = useState<any[]>([]);
 
-  const [activeTab, setActiveTab] = useState<"bible" | "songs" | "setlist">(
+  const [activeTab, setActiveTab] = useState<"bible" | "songs" | "animation">(
     "bible",
   );
   const [lyrics, setLyrics] = useState("");
   const [activeSongId, setActiveSongId] = useState("");
   const [activeSongTitle, setActiveSongTitle] = useState("");
   const [activeSongArtist, setActiveSongArtist] = useState("");
-  const [activeSongSettings, setActiveSongSettings] = useState<any>({
-    layout: "LT",
-    linesMode: 1,
-    fontSize: 5.5,
-  });
+
+  const {
+    liveState,
+    projectLive,
+    clearLive,
+    saveGlobalSettings,
+    bibleSettings,
+    updateBibleSettings,
+    defaultSongSettings,
+    updateDefaultSongSettings,
+    globalSettings,
+    updateGlobalSettings,
+    projectBible,
+    projectSong,
+  } = useLive();
+
+  const [activeSongSettings, setActiveSongSettings] =
+    useState<SongSettings>(defaultSongSettings);
+  const [previewAnimationKey, setPreviewAnimationKey] = useState(0);
 
   const [sidebarWidth, setSidebarWidth] = useState(380);
   const [programWidth, setProgramWidth] = useState(550);
@@ -83,15 +95,72 @@ export default function ControlPanel() {
   const [songSearchArtist, setSongSearchArtist] = useState("");
   const [songSearchTitle, setSongSearchTitle] = useState("");
   const [isSearchingSong, setIsSearchingSong] = useState(false);
+  const [songSearchResults, setSongSearchResults] = useState<
+    Array<{
+      id: number | string;
+      title: string;
+      artist: string;
+      album?: string;
+      lyrics: string;
+      duration?: number;
+    }>
+  >([]);
+  const [hoveredSearchResult, setHoveredSearchResult] = useState<{
+    id: number | string;
+    title: string;
+    artist: string;
+    album?: string;
+    lyrics: string;
+    duration?: number;
+  } | null>(null);
+  const [showSearchResultsModal, setShowSearchResultsModal] = useState(false);
+  const [tooltipTop, setTooltipTop] = useState(120);
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [isDeletingAll, setIsDeletingAll] = useState(false);
+  const [songToDelete, setSongToDelete] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
 
   const [songViewMode, setSongViewMode] = useState<"edit" | "play">("edit");
   const [activeSongChunkIndex, setActiveSongChunkIndex] = useState<
     number | null
   >(null);
 
-  const { liveState, projectLive, clearLive, saveGlobalSettings } = useLive();
+  const updateActiveSongSettings = (updates: Partial<SongSettings>) => {
+    setActiveSongSettings((prev) => {
+      const updated = { ...prev, ...updates };
 
-  const [renderKey, setRenderKey] = useState(0);
+      if (activeSongId) {
+        updateSong(
+          activeSongId,
+          activeSongTitle,
+          activeSongArtist,
+          lyrics,
+          updated,
+        );
+        setTimeout(() => {
+          setSavedSongs((list) =>
+            list.map((s) =>
+              s.id === activeSongId ? { ...s, settings: updated } : s,
+            ),
+          );
+        }, 0);
+      } else {
+        setTimeout(() => {
+          updateDefaultSongSettings(updates);
+        }, 0);
+      }
+
+      if (liveState.type === "song") {
+        setTimeout(() => {
+          projectLive(updated);
+        }, 0);
+      }
+
+      return updated;
+    });
+  };
 
   const [obsUrl, setObsUrl] = useState<string>(
     `${window.location.protocol}//${window.location.host}/output`,
@@ -129,7 +198,7 @@ export default function ControlPanel() {
 
       const data = await res.json();
       if (data.url) {
-        projectLive({ backgroundUrl: data.url });
+        updateGlobalSettings({ backgroundUrl: data.url });
       }
     } catch (err) {
       console.error("Failed to save media", err);
@@ -169,6 +238,62 @@ export default function ControlPanel() {
       setSavedSongs(songs);
     } catch (err) {
       console.error("Failed to load songs from DB", err);
+    }
+  };
+
+  const handleDeleteAllSongs = () => {
+    if (savedSongs.length === 0) return;
+    setShowDeleteAllConfirm(true);
+  };
+
+  const executeDeleteAllSongs = async () => {
+    if (savedSongs.length === 0) {
+      setShowDeleteAllConfirm(false);
+      return;
+    }
+    setIsDeletingAll(true);
+    try {
+      await deleteAllSongs();
+      setSavedSongs([]);
+      setActiveSongId("");
+      setActiveSongTitle("");
+      setActiveSongArtist("");
+      setLyrics("");
+      setActiveSongChunkIndex(null);
+      if (liveState.type === "song") {
+        clearLive();
+      }
+      setShowDeleteAllConfirm(false);
+      toast.success("All saved songs have been deleted.");
+    } catch (err) {
+      console.error("Failed to delete all songs from DB", err);
+      toast.error("Failed to delete songs from database.");
+    } finally {
+      setIsDeletingAll(false);
+    }
+  };
+
+  const executeDeleteSingleSong = async () => {
+    if (!songToDelete) return;
+    try {
+      await deleteSong(songToDelete.id);
+      await loadSongs();
+      if (activeSongId === songToDelete.id) {
+        setActiveSongId("");
+        setActiveSongTitle("");
+        setActiveSongArtist("");
+        setLyrics("");
+        setActiveSongChunkIndex(null);
+        if (liveState.type === "song") {
+          clearLive();
+        }
+      }
+      toast.success(`Deleted "${songToDelete.title}"`);
+    } catch (err) {
+      console.error("Failed to delete song", err);
+      toast.error("Failed to delete song.");
+    } finally {
+      setSongToDelete(null);
     }
   };
 
@@ -229,53 +354,6 @@ export default function ControlPanel() {
   }, []);
 
   useEffect(() => {
-    setRenderKey((prev) => prev + 1);
-  }, [liveState.text]);
-
-  // Auto-save active song settings when liveState changes
-  useEffect(() => {
-    if (activeSongId && activeTab === "songs") {
-      const timer = setTimeout(() => {
-        const {
-          text,
-          title,
-          type,
-          backgroundMode,
-          backgroundColor,
-          backgroundUrl,
-          ...displaySettings
-        } = liveState;
-
-        updateSong(
-          activeSongId,
-          activeSongTitle,
-          activeSongArtist,
-          lyrics,
-          displaySettings,
-        )
-          .then(() => {
-            setSavedSongs((prev) =>
-              prev.map((s) =>
-                s.id === activeSongId ? { ...s, settings: displaySettings } : s,
-              ),
-            );
-          })
-          .catch((err) =>
-            console.error("Failed to auto-save song settings", err),
-          );
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [
-    liveState,
-    activeSongId,
-    activeSongTitle,
-    activeSongArtist,
-    lyrics,
-    activeTab,
-  ]);
-
-  useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizingSidebar.current) {
         setSidebarWidth(
@@ -334,6 +412,9 @@ export default function ControlPanel() {
     try {
       const exportData = {
         liveState,
+        bibleSettings,
+        defaultSongSettings,
+        globalSettings,
       };
       const blob = new Blob([JSON.stringify(exportData, null, 2)], {
         type: "application/json",
@@ -365,10 +446,21 @@ export default function ControlPanel() {
         let importedSongsCount = 0;
         let importedSettings = false;
 
-        // If it's a global export containing liveState
+        // If it's a global export containing liveState or specific settings
         if (data.liveState) {
           projectLive(data.liveState);
-          localStorage.setItem('webProjectorSettings', JSON.stringify(data.liveState));
+          importedSettings = true;
+        }
+        if (data.bibleSettings) {
+          updateBibleSettings(data.bibleSettings);
+          importedSettings = true;
+        }
+        if (data.defaultSongSettings) {
+          updateDefaultSongSettings(data.defaultSongSettings);
+          importedSettings = true;
+        }
+        if (data.globalSettings) {
+          updateGlobalSettings(data.globalSettings);
           importedSettings = true;
         }
 
@@ -525,38 +617,139 @@ export default function ControlPanel() {
     reader.readAsText(file);
   };
 
+  const cleanLyricsText = (
+    plainLyrics?: string | null,
+    syncedLyrics?: string | null,
+  ): string => {
+    if (plainLyrics && plainLyrics.trim()) {
+      return plainLyrics.trim();
+    }
+    if (syncedLyrics && syncedLyrics.trim()) {
+      return syncedLyrics
+        .split("\n")
+        .map((line) =>
+          line.replace(/\[\d{2}:\d{2}(?:\.\d{1,3})?\]/g, "").trim(),
+        )
+        .filter((line) => line.length > 0)
+        .join("\n");
+    }
+    return "";
+  };
+
   const handleOnlineSongSearch = async () => {
-    if (!songSearchTitle) return;
+    const title = songSearchTitle.trim();
+    const artist = songSearchArtist.trim();
+    if (!title) {
+      toast.error("Please enter a song title to search.");
+      return;
+    }
     setIsSearchingSong(true);
+    setHoveredSearchResult(null);
 
     try {
-      const res = await fetch(
-        `https://api.lyrics.ovh/v1/${songSearchArtist || "unknown"}/${songSearchTitle}`,
-      );
-      const data = await res.json();
+      let url = `https://lrclib.net/api/search?track_name=${encodeURIComponent(title)}`;
+      if (artist) {
+        url += `&artist_name=${encodeURIComponent(artist)}`;
+      }
 
-      if (data.lyrics) {
-        setLyrics(data.lyrics);
-        setSongViewMode("edit");
-        try {
-          await addSong(
-            songSearchTitle,
-            songSearchArtist || "Unknown",
-            data.lyrics,
-            { layout: "LT", linesMode: 1, fontSize: 5.5 },
+      let res = await fetch(url);
+      let data = await res.json();
+
+      const hasLyrics =
+        Array.isArray(data) &&
+        data.some(
+          (d: any) =>
+            !d.instrumental && (d.plainLyrics || d.syncedLyrics),
+        );
+
+      if (!hasLyrics) {
+        const queryTerm = `${title} ${artist}`.trim();
+        const fallbackRes = await fetch(
+          `https://lrclib.net/api/search?q=${encodeURIComponent(queryTerm)}`,
+        );
+        data = await fallbackRes.json();
+      }
+
+      if (Array.isArray(data)) {
+        const parsed = data
+          .filter(
+            (item: any) =>
+              !item.instrumental &&
+              (item.plainLyrics || item.syncedLyrics),
+          )
+          .map((item: any) => ({
+            id: item.id,
+            title: item.trackName || item.name || title,
+            artist: item.artistName || (artist || "Unknown"),
+            album: item.albumName || "",
+            lyrics: cleanLyricsText(item.plainLyrics, item.syncedLyrics),
+            duration: item.duration,
+          }))
+          .filter((item) => item.lyrics.length > 0);
+
+        const unique: typeof parsed = [];
+        const seen = new Set<string>();
+        for (const item of parsed) {
+          const key = `${item.title.toLowerCase().trim()}___${item.artist.toLowerCase().trim()}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(item);
+          }
+          if (unique.length >= 6) break;
+        }
+
+        if (unique.length > 0) {
+          setSongSearchResults(unique);
+          setShowSearchResultsModal(true);
+          setHoveredSearchResult(unique[0]);
+          toast.success(
+            `Found ${unique.length} lyrics match${unique.length > 1 ? "es" : ""}. Hover to preview!`,
           );
-          loadSongs();
-          toast.success(`Found and saved ${songSearchTitle}`);
-        } catch (err) {
-          console.error("Failed to save searched song to local DB", err);
+        } else {
+          toast.error(
+            "No lyrics found. Try checking the song title or artist name.",
+          );
         }
       } else {
-        toast.error("Lyrics not found. Please try another song or artist.");
+        toast.error("Lyrics service returned unexpected response format.");
       }
     } catch (err) {
-      toast.error("Error fetching lyrics. The API might be down.");
+      console.error("Error fetching lyrics from LRCLIB", err);
+      toast.error(
+        "Could not fetch lyrics. Please check your internet connection.",
+      );
     } finally {
       setIsSearchingSong(false);
+    }
+  };
+
+  const handleSelectSearchResult = async (selected: {
+    id: number | string;
+    title: string;
+    artist: string;
+    album?: string;
+    lyrics: string;
+  }) => {
+    try {
+      const newId = await addSong(
+        selected.title,
+        selected.artist,
+        selected.lyrics,
+        { layout: "LT", linesMode: 1, fontSize: 5.5 },
+      );
+      await loadSongs();
+      setActiveSongId(newId);
+      setActiveSongTitle(selected.title);
+      setActiveSongArtist(selected.artist);
+      setLyrics(selected.lyrics);
+      setActiveSongChunkIndex(null);
+      setSongViewMode("play");
+      setShowSearchResultsModal(false);
+      setHoveredSearchResult(null);
+      toast.success(`Imported and selected "${selected.title}"`);
+    } catch (err) {
+      console.error("Failed to save selected song to DB", err);
+      toast.error("Failed to save song to database.");
     }
   };
 
@@ -567,7 +760,7 @@ export default function ControlPanel() {
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
     const chunks: string[] = [];
-    const mode = liveState.linesMode || 1;
+    const mode = activeSongSettings.linesMode || 1;
     let i = 0;
     while (i < lines.length) {
       if (lines[i].includes("_1")) {
@@ -589,17 +782,12 @@ export default function ControlPanel() {
       }
     }
     return chunks;
-  }, [lyrics, liveState.linesMode]);
+  }, [lyrics, activeSongSettings.linesMode]);
 
   const handleProjectSongChunk = (chunkText: string, index: number) => {
     setActiveSongChunkIndex(index);
     setActiveProjectedRef(null);
-    projectLive({
-      type: "song",
-      title: activeSongTitle || "Lyrics",
-      text: chunkText,
-      layout: activeSongSettings.layout || "LT",
-    });
+    projectSong(activeSongTitle || "Lyrics", chunkText, activeSongSettings);
   };
 
   const activeBible = bibles.find((b) => b.id === selectedBibleId);
@@ -658,11 +846,11 @@ export default function ControlPanel() {
                 verse: verseNum,
               });
               if (shouldProject) {
-                projectLive({
-                  type: "bible",
-                  title: `${matchedBook.name} ${chapNum}:${verseNum} (${activeBible.name})`,
-                  text: matchedVerse.text,
-                });
+                setActiveSongChunkIndex(null);
+                projectBible(
+                  `${matchedBook.name} ${chapNum}:${verseNum} (${activeBible.name})`,
+                  matchedVerse.text,
+                );
               }
             }
           }
@@ -677,11 +865,11 @@ export default function ControlPanel() {
       chap: Number(selectedChapterNum),
       verse: verse.number,
     });
-    projectLive({
-      type: "bible",
-      title: `${activeBook?.name} ${activeChapter?.number}:${verse.number} (${activeBible?.name})`,
-      text: verse.text,
-    });
+    setActiveSongChunkIndex(null);
+    projectBible(
+      `${activeBook?.name} ${activeChapter?.number}:${verse.number} (${activeBible?.name})`,
+      verse.text,
+    );
   };
 
   const handleClear = () => {
@@ -706,58 +894,165 @@ export default function ControlPanel() {
         );
 
         if (newBook && newChap && newVerse) {
-          projectLive({
-            title: `${newBook.name} ${newChap.number}:${newVerse.number} (${newBible.name})`,
-            text: newVerse.text,
-          });
+          projectBible(
+            `${newBook.name} ${newChap.number}:${newVerse.number} (${newBible.name})`,
+            newVerse.text,
+          );
         }
       }
     }
   };
 
-  const goToNext = () => {
-    if (activeTab === "bible" && activeChapter && activeProjectedRef) {
-      const currentIndex = activeChapter.verses.findIndex(
-        (v) => v.number === activeProjectedRef.verse,
+  const handleSelectSong = (
+    s: any,
+    projectOption: "none" | "first" | "last" = "none",
+  ) => {
+    setActiveSongId(s.id);
+    setActiveSongTitle(s.title || "");
+    setActiveSongArtist(s.artist || "");
+    setLyrics(s.lyrics);
+    const loadedSettings: SongSettings = {
+      ...defaultSongSettings,
+      ...(s.settings || {}),
+    };
+    setActiveSongSettings(loadedSettings);
+    setSongViewMode("play");
+
+    // Clean lines and chunk them
+    const cleanLines = (s.lyrics || "")
+      .split("\n")
+      .map((l: string) => l.trim())
+      .filter((l: string) => l.length > 0);
+    const linesPerSlide = loadedSettings.linesMode || 2;
+    const newChunks: string[] = [];
+    for (let i = 0; i < cleanLines.length; i += linesPerSlide) {
+      newChunks.push(cleanLines.slice(i, i + linesPerSlide).join("\n"));
+    }
+
+    if (projectOption === "first" && newChunks.length > 0) {
+      setActiveSongChunkIndex(0);
+      setActiveProjectedRef(null);
+      projectSong(s.title || "Lyrics", newChunks[0], loadedSettings);
+    } else if (projectOption === "last" && newChunks.length > 0) {
+      const lastIdx = newChunks.length - 1;
+      setActiveSongChunkIndex(lastIdx);
+      setActiveProjectedRef(null);
+      projectSong(s.title || "Lyrics", newChunks[lastIdx], loadedSettings);
+    } else {
+      setActiveSongChunkIndex(null);
+    }
+  };
+
+  const goToNextSong = (autoProject: boolean = true) => {
+    if (savedSongs.length === 0) return;
+    const currentIdx = savedSongs.findIndex((s) => s.id === activeSongId);
+    if (currentIdx !== -1 && currentIdx < savedSongs.length - 1) {
+      handleSelectSong(
+        savedSongs[currentIdx + 1],
+        autoProject ? "first" : "none",
       );
-      if (
-        currentIndex !== -1 &&
-        currentIndex < activeChapter.verses.length - 1
-      ) {
-        handleProjectVerse(activeChapter.verses[currentIndex + 1]);
+    } else if (currentIdx === -1 && savedSongs.length > 0) {
+      handleSelectSong(savedSongs[0], autoProject ? "first" : "none");
+    }
+  };
+
+  const goToPrevSong = (autoProject: boolean = true) => {
+    if (savedSongs.length === 0) return;
+    const currentIdx = savedSongs.findIndex((s) => s.id === activeSongId);
+    if (currentIdx > 0) {
+      handleSelectSong(
+        savedSongs[currentIdx - 1],
+        autoProject ? "last" : "none",
+      );
+    } else if (currentIdx === -1 && savedSongs.length > 0) {
+      handleSelectSong(savedSongs[0], autoProject ? "first" : "none");
+    }
+  };
+
+  const goToNext = () => {
+    if (activeTab === "bible") {
+      if (activeChapter) {
+        if (!activeProjectedRef) {
+          if (activeChapter.verses.length > 0) {
+            handleProjectVerse(activeChapter.verses[0]);
+          }
+        } else {
+          const currentIndex = activeChapter.verses.findIndex(
+            (v) => v.number === activeProjectedRef.verse,
+          );
+          if (
+            currentIndex !== -1 &&
+            currentIndex < activeChapter.verses.length - 1
+          ) {
+            handleProjectVerse(activeChapter.verses[currentIndex + 1]);
+          } else if (
+            currentIndex === activeChapter.verses.length - 1 &&
+            activeBook
+          ) {
+            const nextChap = activeBook.chapters.find(
+              (c) => c.number === activeChapter.number + 1,
+            );
+            if (nextChap && nextChap.verses.length > 0) {
+              setSelectedChapterNum(nextChap.number);
+              handleProjectVerse(nextChap.verses[0]);
+            }
+          }
+        }
       }
-    } else if (
-      activeTab === "songs" &&
-      songChunks.length > 0 &&
-      activeSongChunkIndex !== null
-    ) {
-      if (activeSongChunkIndex < songChunks.length - 1) {
-        handleProjectSongChunk(
-          songChunks[activeSongChunkIndex + 1],
-          activeSongChunkIndex + 1,
-        );
+    } else {
+      // Song context (works in songs, animation, or active song)
+      if (songChunks.length > 0) {
+        if (activeSongChunkIndex === null) {
+          handleProjectSongChunk(songChunks[0], 0);
+        } else if (activeSongChunkIndex < songChunks.length - 1) {
+          handleProjectSongChunk(
+            songChunks[activeSongChunkIndex + 1],
+            activeSongChunkIndex + 1,
+          );
+        } else {
+          // Reached the end of this song's chunks -> advance to next song!
+          goToNextSong(true);
+        }
+      } else if (savedSongs.length > 0) {
+        goToNextSong(true);
       }
     }
   };
 
   const goToPrev = () => {
-    if (activeTab === "bible" && activeChapter && activeProjectedRef) {
-      const currentIndex = activeChapter.verses.findIndex(
-        (v) => v.number === activeProjectedRef.verse,
-      );
-      if (currentIndex > 0) {
-        handleProjectVerse(activeChapter.verses[currentIndex - 1]);
-      }
-    } else if (
-      activeTab === "songs" &&
-      songChunks.length > 0 &&
-      activeSongChunkIndex !== null
-    ) {
-      if (activeSongChunkIndex > 0) {
-        handleProjectSongChunk(
-          songChunks[activeSongChunkIndex - 1],
-          activeSongChunkIndex - 1,
+    if (activeTab === "bible") {
+      if (activeChapter && activeProjectedRef) {
+        const currentIndex = activeChapter.verses.findIndex(
+          (v) => v.number === activeProjectedRef.verse,
         );
+        if (currentIndex > 0) {
+          handleProjectVerse(activeChapter.verses[currentIndex - 1]);
+        } else if (currentIndex === 0 && activeBook) {
+          const prevChap = activeBook.chapters.find(
+            (c) => c.number === activeChapter.number - 1,
+          );
+          if (prevChap && prevChap.verses.length > 0) {
+            setSelectedChapterNum(prevChap.number);
+            handleProjectVerse(prevChap.verses[prevChap.verses.length - 1]);
+          }
+        }
+      }
+    } else {
+      // Song context
+      if (songChunks.length > 0) {
+        if (activeSongChunkIndex === null) {
+          handleProjectSongChunk(songChunks[0], 0);
+        } else if (activeSongChunkIndex > 0) {
+          handleProjectSongChunk(
+            songChunks[activeSongChunkIndex - 1],
+            activeSongChunkIndex - 1,
+          );
+        } else {
+          // At chunk 0 of this song -> go to previous song!
+          goToPrevSong(true);
+        }
+      } else if (savedSongs.length > 0) {
+        goToPrevSong(true);
       }
     }
   };
@@ -766,6 +1061,7 @@ export default function ControlPanel() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         handleClear();
+        return;
       }
 
       // Do not trigger if user is typing in an input or textarea
@@ -776,9 +1072,34 @@ export default function ControlPanel() {
         return;
       }
 
+      // Explicit song changing hotkeys: PageDown / PageUp, [ / ], or Ctrl+Arrow
+      if (
+        e.key === "PageDown" ||
+        e.key === "]" ||
+        ((e.ctrlKey || e.metaKey) &&
+          (e.key === "ArrowRight" || e.key === "ArrowDown"))
+      ) {
+        e.preventDefault();
+        goToNextSong(true);
+        return;
+      }
+
+      if (
+        e.key === "PageUp" ||
+        e.key === "[" ||
+        ((e.ctrlKey || e.metaKey) &&
+          (e.key === "ArrowLeft" || e.key === "ArrowUp"))
+      ) {
+        e.preventDefault();
+        goToPrevSong(true);
+        return;
+      }
+
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        e.preventDefault();
         goToNext();
       } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        e.preventDefault();
         goToPrev();
       }
     };
@@ -788,9 +1109,13 @@ export default function ControlPanel() {
   }, [
     activeTab,
     activeChapter,
+    activeBook,
     activeProjectedRef,
     songChunks,
     activeSongChunkIndex,
+    activeSongId,
+    savedSongs,
+    handleClear,
     handleProjectVerse,
     handleProjectSongChunk,
   ]);
@@ -805,6 +1130,59 @@ export default function ControlPanel() {
     }
   }, [activeProjectedRef, activeSongChunkIndex, activeTab]);
 
+  const isBibleContext = activeTab === "bible";
+  const activeLayout = isBibleContext
+    ? bibleSettings.layout
+    : activeSongSettings.layout;
+  const activeVerticalAlign = isBibleContext
+    ? bibleSettings.verticalAlign
+    : activeSongSettings.verticalAlign;
+  const activeHorizontalAlign = isBibleContext
+    ? bibleSettings.horizontalAlign
+    : activeSongSettings.horizontalAlign;
+  const activeLinesMode = isBibleContext
+    ? bibleSettings.linesMode
+    : activeSongSettings.linesMode;
+  const isCurrentKinetic =
+    !isBibleContext && activeSongSettings.enableKineticTypography;
+
+  const handleLayoutChange = (layout: "FS" | "LT") => {
+    if (isBibleContext) {
+      updateBibleSettings({ layout });
+    } else {
+      updateActiveSongSettings({ layout });
+    }
+  };
+
+  const handleVerticalAlignChange = (
+    verticalAlign: "top" | "middle" | "bottom",
+  ) => {
+    if (isBibleContext) {
+      updateBibleSettings({ verticalAlign });
+    } else {
+      updateActiveSongSettings({ verticalAlign });
+    }
+  };
+
+  const handleHorizontalAlignChange = (
+    horizontalAlign: "left" | "center" | "right",
+  ) => {
+    if (isBibleContext) {
+      updateBibleSettings({ horizontalAlign });
+    } else {
+      updateActiveSongSettings({ horizontalAlign });
+    }
+  };
+
+  const handleLinesModeChange = (mode: 1 | 2 | 3 | 4) => {
+    if (isBibleContext) {
+      updateBibleSettings({ linesMode: mode });
+    } else {
+      updateActiveSongSettings({ linesMode: mode });
+      setActiveSongChunkIndex(null);
+    }
+  };
+
   return (
     <div className="panel-layout">
       {/* Themes Modal */}
@@ -815,14 +1193,46 @@ export default function ControlPanel() {
         >
           <div
             className="modal-content"
-            style={{ width: "600px", padding: "20px", background: "rgba(10, 15, 25, 0.98)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "12px" }}
+            style={{
+              width: "600px",
+              padding: "20px",
+              background: "rgba(10, 15, 25, 0.98)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: "12px",
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px", alignItems: "center" }}>
-              <h2 style={{ margin: 0, fontSize: "1.2rem", color: "var(--text-primary)" }}>Select Theme</h2>
-              <button className="icon-btn" onClick={() => setIsThemesModalOpen(false)}><X size={20} /></button>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                marginBottom: "20px",
+                alignItems: "center",
+              }}
+            >
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "1.2rem",
+                  color: "var(--text-primary)",
+                }}
+              >
+                Select Theme
+              </h2>
+              <button
+                className="icon-btn"
+                onClick={() => setIsThemesModalOpen(false)}
+              >
+                <X size={20} />
+              </button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "16px",
+              }}
+            >
               {[
                 { id: "none", name: "Standard (No Theme)" },
                 { id: "torn-edge", name: "Torn Edge" },
@@ -830,13 +1240,16 @@ export default function ControlPanel() {
                 { id: "theme-2", name: "Theme 2 (Centered Pill)" },
                 { id: "theme-3", name: "Theme 3 (Left Edge Pill)" },
                 { id: "theme-4", name: "Theme 4 (Full Width)" },
-                { id: "theme-5", name: "Theme 5 (Transparent)" }
-              ].map(theme => (
+                { id: "theme-5", name: "Theme 5 (Transparent)" },
+              ].map((theme) => (
                 <div
                   key={theme.id}
                   style={{
-                    background: liveState.bibleLowerThirdStyle === theme.id ? "rgba(59, 130, 246, 0.2)" : "rgba(255,255,255,0.05)",
-                    border: `1px solid ${liveState.bibleLowerThirdStyle === theme.id ? "var(--primary)" : "rgba(255,255,255,0.1)"}`,
+                    background:
+                      bibleSettings.bibleLowerThirdStyle === theme.id
+                        ? "rgba(59, 130, 246, 0.2)"
+                        : "rgba(255,255,255,0.05)",
+                    border: `1px solid ${bibleSettings.bibleLowerThirdStyle === theme.id ? "var(--primary)" : "rgba(255,255,255,0.1)"}`,
                     borderRadius: "8px",
                     padding: "16px",
                     cursor: "pointer",
@@ -845,11 +1258,24 @@ export default function ControlPanel() {
                     flexDirection: "column",
                     alignItems: "center",
                     gap: "12px",
-                    transition: "all 0.2s"
+                    transition: "all 0.2s",
                   }}
-                  onClick={() => { projectLive({ bibleLowerThirdStyle: theme.id as any }); setIsThemesModalOpen(false); }}
+                  onClick={() => {
+                    updateBibleSettings({
+                      bibleLowerThirdStyle: theme.id as any,
+                    });
+                    setIsThemesModalOpen(false);
+                  }}
                 >
-                  <span style={{ fontSize: "0.9rem", color: "white", fontWeight: "bold" }}>{theme.name}</span>
+                  <span
+                    style={{
+                      fontSize: "0.9rem",
+                      color: "white",
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {theme.name}
+                  </span>
                 </div>
               ))}
             </div>
@@ -917,9 +1343,9 @@ export default function ControlPanel() {
                   </span>
                   <select
                     className="input"
-                    value={liveState.fontFamily}
+                    value={globalSettings.fontFamily}
                     onChange={(e) =>
-                      projectLive({ fontFamily: e.target.value })
+                      updateGlobalSettings({ fontFamily: e.target.value })
                     }
                   >
                     <option value="Inter">Inter (Sans Serif)</option>
@@ -937,10 +1363,13 @@ export default function ControlPanel() {
                   </span>
                   <select
                     className="input"
-                    value={liveState.animation}
-                    onChange={(e) =>
-                      projectLive({ animation: e.target.value as any })
-                    }
+                    value={bibleSettings.animation}
+                    onChange={(e) => {
+                      updateBibleSettings({ animation: e.target.value as any });
+                      updateActiveSongSettings({
+                        animation: e.target.value as any,
+                      });
+                    }}
                   >
                     <option value="none">None (Instant)</option>
                     <option value="fade">Fade In</option>
@@ -991,9 +1420,9 @@ export default function ControlPanel() {
                       <span className="control-label">Transform</span>
                       <select
                         className="input"
-                        value={liveState.songTextTransform}
+                        value={activeSongSettings.songTextTransform}
                         onChange={(e) =>
-                          projectLive({
+                          updateActiveSongSettings({
                             songTextTransform: e.target.value as any,
                           })
                         }
@@ -1008,9 +1437,11 @@ export default function ControlPanel() {
                       <span className="control-label">Weight</span>
                       <select
                         className="input"
-                        value={liveState.songFontWeight}
+                        value={activeSongSettings.songFontWeight}
                         onChange={(e) =>
-                          projectLive({ songFontWeight: e.target.value })
+                          updateActiveSongSettings({
+                            songFontWeight: e.target.value,
+                          })
                         }
                       >
                         <option value="400">Normal</option>
@@ -1053,9 +1484,9 @@ export default function ControlPanel() {
                       <span className="control-label">Transform</span>
                       <select
                         className="input"
-                        value={liveState.bibleTextTransform}
+                        value={bibleSettings.bibleTextTransform}
                         onChange={(e) =>
-                          projectLive({
+                          updateBibleSettings({
                             bibleTextTransform: e.target.value as any,
                           })
                         }
@@ -1070,9 +1501,11 @@ export default function ControlPanel() {
                       <span className="control-label">Weight</span>
                       <select
                         className="input"
-                        value={liveState.bibleFontWeight}
+                        value={bibleSettings.bibleFontWeight}
                         onChange={(e) =>
-                          projectLive({ bibleFontWeight: e.target.value })
+                          updateBibleSettings({
+                            bibleFontWeight: e.target.value,
+                          })
                         }
                       >
                         <option value="400">Normal</option>
@@ -1115,9 +1548,9 @@ export default function ControlPanel() {
                       <span className="control-label">Transform</span>
                       <select
                         className="input"
-                        value={liveState.refTextTransform}
+                        value={bibleSettings.refTextTransform}
                         onChange={(e) =>
-                          projectLive({
+                          updateBibleSettings({
                             refTextTransform: e.target.value as any,
                           })
                         }
@@ -1132,9 +1565,9 @@ export default function ControlPanel() {
                       <span className="control-label">Weight</span>
                       <select
                         className="input"
-                        value={liveState.refFontWeight}
+                        value={bibleSettings.refFontWeight}
                         onChange={(e) =>
-                          projectLive({ refFontWeight: e.target.value })
+                          updateBibleSettings({ refFontWeight: e.target.value })
                         }
                       >
                         <option value="400">Normal</option>
@@ -1168,9 +1601,9 @@ export default function ControlPanel() {
                   >
                     <input
                       type="color"
-                      value={liveState.refColor}
+                      value={bibleSettings.refColor}
                       onChange={(e) =>
-                        projectLive({ refColor: e.target.value })
+                        updateBibleSettings({ refColor: e.target.value })
                       }
                       style={{
                         width: "40px",
@@ -1187,7 +1620,7 @@ export default function ControlPanel() {
                         color: "var(--text-secondary)",
                       }}
                     >
-                      {liveState.refColor.toUpperCase()}
+                      {bibleSettings.refColor.toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -1205,9 +1638,9 @@ export default function ControlPanel() {
                   >
                     <input
                       type="color"
-                      value={liveState.textColor}
+                      value={globalSettings.textColor}
                       onChange={(e) =>
-                        projectLive({ textColor: e.target.value })
+                        updateGlobalSettings({ textColor: e.target.value })
                       }
                       style={{
                         width: "40px",
@@ -1224,7 +1657,7 @@ export default function ControlPanel() {
                         color: "var(--text-secondary)",
                       }}
                     >
-                      {liveState.textColor.toUpperCase()}
+                      {globalSettings.textColor.toUpperCase()}
                     </span>
                   </div>
                 </div>
@@ -1265,9 +1698,11 @@ export default function ControlPanel() {
                     min="1"
                     max="10"
                     step="0.1"
-                    value={liveState.refFontSize}
+                    value={bibleSettings.refFontSize}
                     onChange={(e) =>
-                      projectLive({ refFontSize: Number(e.target.value) })
+                      updateBibleSettings({
+                        refFontSize: Number(e.target.value),
+                      })
                     }
                   />
                 </div>
@@ -1281,9 +1716,11 @@ export default function ControlPanel() {
                     min="0"
                     max="40"
                     step="1"
-                    value={liveState.paddingLR}
+                    value={globalSettings.paddingLR}
                     onChange={(e) =>
-                      projectLive({ paddingLR: Number(e.target.value) })
+                      updateGlobalSettings({
+                        paddingLR: Number(e.target.value),
+                      })
                     }
                   />
                 </div>
@@ -1296,9 +1733,11 @@ export default function ControlPanel() {
                     min="30"
                     max="100"
                     step="1"
-                    value={liveState.lowerThirdWidth}
+                    value={bibleSettings.lowerThirdWidth}
                     onChange={(e) =>
-                      projectLive({ lowerThirdWidth: Number(e.target.value) })
+                      updateBibleSettings({
+                        lowerThirdWidth: Number(e.target.value),
+                      })
                     }
                   />
                 </div>
@@ -1315,9 +1754,11 @@ export default function ControlPanel() {
                   >
                     <input
                       type="checkbox"
-                      checked={liveState.enableLowerThirdBg}
+                      checked={bibleSettings.enableLowerThirdBg}
                       onChange={(e) =>
-                        projectLive({ enableLowerThirdBg: e.target.checked })
+                        updateBibleSettings({
+                          enableLowerThirdBg: e.target.checked,
+                        })
                       }
                     />
                     Enable Lower Third Background
@@ -1330,9 +1771,9 @@ export default function ControlPanel() {
                     type="color"
                     className="input"
                     style={{ padding: "0", height: "40px" }}
-                    value={liveState.lowerThirdBgColor || "#000000"}
+                    value={bibleSettings.lowerThirdBgColor || "#000000"}
                     onChange={(e) =>
-                      projectLive({ lowerThirdBgColor: e.target.value })
+                      updateBibleSettings({ lowerThirdBgColor: e.target.value })
                     }
                   />
                 </div>
@@ -1347,9 +1788,9 @@ export default function ControlPanel() {
                     min="0"
                     max="100"
                     step="1"
-                    value={liveState.lowerThirdBgOpacity ?? 50}
+                    value={bibleSettings.lowerThirdBgOpacity ?? 50}
                     onChange={(e) =>
-                      projectLive({
+                      updateBibleSettings({
                         lowerThirdBgOpacity: Number(e.target.value),
                       })
                     }
@@ -1361,7 +1802,7 @@ export default function ControlPanel() {
                       color: "var(--text-secondary)",
                     }}
                   >
-                    {liveState.lowerThirdBgOpacity ?? 50}%
+                    {bibleSettings.lowerThirdBgOpacity ?? 50}%
                   </div>
                 </div>
 
@@ -1375,9 +1816,11 @@ export default function ControlPanel() {
                     min="0"
                     max="20"
                     step="0.5"
-                    value={liveState.lowerThirdPadding ?? 3}
+                    value={bibleSettings.lowerThirdPadding ?? 3}
                     onChange={(e) =>
-                      projectLive({ lowerThirdPadding: Number(e.target.value) })
+                      updateBibleSettings({
+                        lowerThirdPadding: Number(e.target.value),
+                      })
                     }
                   />
                 </div>
@@ -1415,14 +1858,18 @@ export default function ControlPanel() {
                     style={{ display: "flex", width: "100%" }}
                   >
                     <button
-                      className={`seg-btn ${liveState.refPosition === "top" ? "active" : ""}`}
-                      onClick={() => projectLive({ refPosition: "top" })}
+                      className={`seg-btn ${bibleSettings.refPosition === "top" ? "active" : ""}`}
+                      onClick={() =>
+                        updateBibleSettings({ refPosition: "top" })
+                      }
                     >
                       Top (Above Verse)
                     </button>
                     <button
-                      className={`seg-btn ${liveState.refPosition === "bottom" ? "active" : ""}`}
-                      onClick={() => projectLive({ refPosition: "bottom" })}
+                      className={`seg-btn ${bibleSettings.refPosition === "bottom" ? "active" : ""}`}
+                      onClick={() =>
+                        updateBibleSettings({ refPosition: "bottom" })
+                      }
                     >
                       Bottom (Below Verse)
                     </button>
@@ -1436,25 +1883,96 @@ export default function ControlPanel() {
                     style={{ display: "flex", width: "100%" }}
                   >
                     <button
-                      className={`seg-btn ${liveState.refAlign === "left" ? "active" : ""}`}
-                      onClick={() => projectLive({ refAlign: "left" })}
+                      className={`seg-btn ${bibleSettings.refAlign === "left" ? "active" : ""}`}
+                      onClick={() => updateBibleSettings({ refAlign: "left" })}
                     >
                       Left
                     </button>
                     <button
-                      className={`seg-btn ${liveState.refAlign === "center" ? "active" : ""}`}
-                      onClick={() => projectLive({ refAlign: "center" })}
+                      className={`seg-btn ${bibleSettings.refAlign === "center" ? "active" : ""}`}
+                      onClick={() =>
+                        updateBibleSettings({ refAlign: "center" })
+                      }
                     >
                       Center
                     </button>
                     <button
-                      className={`seg-btn ${liveState.refAlign === "right" ? "active" : ""}`}
-                      onClick={() => projectLive({ refAlign: "right" })}
+                      className={`seg-btn ${bibleSettings.refAlign === "right" ? "active" : ""}`}
+                      onClick={() => updateBibleSettings({ refAlign: "right" })}
                     >
                       Right
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div
+                style={{
+                  borderTop: "1px solid var(--border-subtle)",
+                  marginTop: "20px",
+                  paddingTop: "20px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "8px",
+                  }}
+                >
+                  <h4
+                    style={{
+                      color: "#ef4444",
+                      margin: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      fontSize: "0.95rem",
+                    }}
+                  >
+                    <Trash2 size={16} /> Song Library Data
+                  </h4>
+                  <span
+                    style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}
+                  >
+                    {savedSongs.length}{" "}
+                    {savedSongs.length === 1 ? "song" : "songs"} saved
+                  </span>
+                </div>
+                <p
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "var(--text-muted)",
+                    margin: "0 0 12px 0",
+                    lineHeight: 1.4,
+                  }}
+                >
+                  Delete all current songs from your local database at once.
+                </p>
+                <button
+                  className="btn"
+                  style={{
+                    background: "rgba(239, 68, 68, 0.15)",
+                    border: "1px solid rgba(239, 68, 68, 0.4)",
+                    color: "#fca5a5",
+                    fontWeight: 600,
+                    padding: "8px 16px",
+                    borderRadius: "6px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    cursor: savedSongs.length === 0 ? "not-allowed" : "pointer",
+                    opacity: savedSongs.length === 0 ? 0.5 : 1,
+                  }}
+                  disabled={savedSongs.length === 0}
+                  onClick={() => {
+                    setIsSettingsOpen(false);
+                    setShowDeleteAllConfirm(true);
+                  }}
+                >
+                  <Trash2 size={14} /> Delete All Saved Songs ({savedSongs.length})
+                </button>
               </div>
 
               <div
@@ -1611,6 +2129,391 @@ export default function ControlPanel() {
         </div>
       )}
 
+      {/* Delete All Saved Songs Confirmation Modal */}
+      {showDeleteAllConfirm && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.75)",
+            backdropFilter: "blur(6px)",
+            zIndex: 99999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+          onClick={() => setShowDeleteAllConfirm(false)}
+        >
+          <div
+            style={{
+              background: "var(--surface, #1e222d)",
+              border: "1px solid rgba(239, 68, 68, 0.35)",
+              borderRadius: "12px",
+              padding: "24px",
+              width: "420px",
+              maxWidth: "92vw",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                marginBottom: "16px",
+              }}
+            >
+              <div
+                style={{
+                  width: "44px",
+                  height: "44px",
+                  borderRadius: "10px",
+                  background: "rgba(239, 68, 68, 0.15)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#ef4444",
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 size={24} />
+              </div>
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1.1rem",
+                    color: "#fff",
+                    fontWeight: 600,
+                  }}
+                >
+                  Clear All Saved Songs?
+                </h3>
+                <span
+                  style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}
+                >
+                  This action cannot be undone.
+                </span>
+              </div>
+            </div>
+
+            <p
+              style={{
+                fontSize: "0.85rem",
+                color: "var(--text-muted)",
+                lineHeight: 1.5,
+                margin: "0 0 20px 0",
+              }}
+            >
+              Are you sure you want to delete all{" "}
+              <strong>{savedSongs.length}</strong> saved song
+              {savedSongs.length > 1 ? "s" : ""} from your database? All stored
+              lyrics, custom styles, and song records will be permanently wiped.
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: "8px 16px", fontSize: "0.85rem" }}
+                onClick={() => setShowDeleteAllConfirm(false)}
+                disabled={isDeletingAll}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{
+                  padding: "8px 16px",
+                  fontSize: "0.85rem",
+                  background: "#dc2626",
+                  borderColor: "#dc2626",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                onClick={executeDeleteAllSongs}
+                disabled={isDeletingAll}
+              >
+                <Trash2 size={15} />
+                {isDeletingAll
+                  ? "Deleting..."
+                  : `Delete All (${savedSongs.length}) Songs`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Single Song Confirmation Modal */}
+      {songToDelete && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0, 0, 0, 0.75)",
+            backdropFilter: "blur(6px)",
+            zIndex: 99999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "16px",
+          }}
+          onClick={() => setSongToDelete(null)}
+        >
+          <div
+            style={{
+              background: "var(--surface, #1e222d)",
+              border: "1px solid rgba(239, 68, 68, 0.35)",
+              borderRadius: "12px",
+              padding: "22px",
+              width: "380px",
+              maxWidth: "92vw",
+              boxShadow: "0 20px 50px rgba(0, 0, 0, 0.6)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                marginBottom: "14px",
+              }}
+            >
+              <div
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  borderRadius: "8px",
+                  background: "rgba(239, 68, 68, 0.15)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#ef4444",
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 size={20} />
+              </div>
+              <div>
+                <h3
+                  style={{
+                    margin: 0,
+                    fontSize: "1rem",
+                    color: "#fff",
+                    fontWeight: 600,
+                  }}
+                >
+                  Delete Song?
+                </h3>
+                <span
+                  style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}
+                >
+                  Remove from saved library
+                </span>
+              </div>
+            </div>
+
+            <p
+              style={{
+                fontSize: "0.85rem",
+                color: "var(--text-muted)",
+                lineHeight: 1.5,
+                margin: "0 0 18px 0",
+              }}
+            >
+              Are you sure you want to delete{" "}
+              <strong>"{songToDelete.title}"</strong>?
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "10px",
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ padding: "6px 14px", fontSize: "0.82rem" }}
+                onClick={() => setSongToDelete(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{
+                  padding: "6px 14px",
+                  fontSize: "0.82rem",
+                  background: "#dc2626",
+                  borderColor: "#dc2626",
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                onClick={executeDeleteSingleSong}
+              >
+                <Trash2 size={13} /> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Lyrics Preview Tooltip Plane */}
+      {showSearchResultsModal && hoveredSearchResult && (
+        <div
+          style={{
+            position: "fixed",
+            left: `${sidebarWidth + 12}px`,
+            top: `${tooltipTop}px`,
+            width: "380px",
+            maxWidth: "calc(100vw - 420px)",
+            maxHeight: "480px",
+            background: "rgba(18, 22, 34, 0.96)",
+            backdropFilter: "blur(16px)",
+            border: "1px solid rgba(99, 102, 241, 0.35)",
+            borderRadius: "10px",
+            boxShadow:
+              "0 14px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(99, 102, 241, 0.15)",
+            zIndex: 10000,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+            pointerEvents: "auto",
+            animation: "fadeIn 0.15s ease-out",
+          }}
+          onMouseEnter={() => {
+            // Keep preview active if cursor enters tooltip plane
+          }}
+          onMouseLeave={() => {
+            setHoveredSearchResult(null);
+          }}
+        >
+          {/* Tooltip Header */}
+          <div
+            style={{
+              padding: "10px 14px",
+              background: "rgba(255, 255, 255, 0.04)",
+              borderBottom: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ minWidth: 0, flex: 1, paddingRight: "8px" }}>
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: "0.9rem",
+                  color: "#fff",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {hoveredSearchResult.title}
+              </div>
+              <div
+                style={{
+                  fontSize: "0.75rem",
+                  color: "var(--primary)",
+                  fontWeight: 500,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {hoveredSearchResult.artist}
+                {hoveredSearchResult.album
+                  ? ` • ${hoveredSearchResult.album}`
+                  : ""}
+              </div>
+            </div>
+            <span
+              style={{
+                fontSize: "0.7rem",
+                background: "rgba(99, 102, 241, 0.15)",
+                color: "var(--primary)",
+                padding: "2px 8px",
+                borderRadius: "10px",
+                fontWeight: 600,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Full Lyrics Preview
+            </span>
+          </div>
+
+          {/* Tooltip Scrollable Lyrics Plane */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: "auto",
+              padding: "12px 14px",
+              fontSize: "0.82rem",
+              lineHeight: 1.6,
+              color: "var(--text-main)",
+              whiteSpace: "pre-line",
+              fontFamily: "var(--font-mono, monospace)",
+              background: "rgba(0, 0, 0, 0.25)",
+            }}
+          >
+            {hoveredSearchResult.lyrics}
+          </div>
+
+          {/* Tooltip Footer action */}
+          <div
+            style={{
+              padding: "8px 14px",
+              background: "rgba(255, 255, 255, 0.03)",
+              borderTop: "1px solid var(--border-subtle)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+              Click to import into workspace:
+            </span>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{
+                fontSize: "0.78rem",
+                padding: "5px 12px",
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+              }}
+              onClick={() => handleSelectSearchResult(hoveredSearchResult)}
+            >
+              <Check size={13} /> Select & Add
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Topbar */}
       <header className="panel-topbar">
         <div className="panel-logo">
@@ -1635,6 +2538,7 @@ export default function ControlPanel() {
               alignItems: "center",
               gap: "6px",
               borderRadius: "4px",
+              width: "auto",
             }}
           >
             <MonitorPlay size={16} />
@@ -1670,10 +2574,12 @@ export default function ControlPanel() {
               Songs
             </div>
             <div
-              className={`sidebar-tab ${activeTab === "setlist" ? "active" : ""}`}
-              onClick={() => setActiveTab("setlist")}
+              className={`sidebar-tab ${activeTab === "animation" ? "active" : ""}`}
+              onClick={() => setActiveTab("animation")}
+              style={{ display: "flex", alignItems: "center", gap: "5px" }}
             >
-              Setlist
+              <Sparkles size={14} />
+              Animation
             </div>
           </div>
 
@@ -1872,11 +2778,219 @@ export default function ControlPanel() {
             {activeTab === "songs" && (
               <div
                 style={{
+                  position: "relative",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "16px",
+                  gap: "14px",
+                  height: "100%",
+                  minHeight: 0,
                 }}
               >
+                {/* Search Results Overlay Modal Plane in Sidebar */}
+                {showSearchResultsModal && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      background: "rgba(15, 23, 42, 0.94)",
+                      backdropFilter: "blur(8px)",
+                      zIndex: 35,
+                      padding: "14px 12px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      borderRadius: "8px",
+                      border: "1px solid rgba(99, 102, 241, 0.35)",
+                      boxShadow: "0 10px 30px rgba(0, 0, 0, 0.5)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        borderBottom: "1px solid var(--border-subtle)",
+                        paddingBottom: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <Sparkles size={16} color="var(--primary)" />
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            fontSize: "0.85rem",
+                            color: "var(--text-main)",
+                          }}
+                        >
+                          Lyrics Matches ({songSearchResults.length})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        style={{
+                          background: "rgba(255,255,255,0.06)",
+                          border: "1px solid var(--border-subtle)",
+                          color: "var(--text-muted)",
+                          borderRadius: "4px",
+                          padding: "2px 6px",
+                          cursor: "pointer",
+                        }}
+                        onClick={() => {
+                          setShowSearchResultsModal(false);
+                          setHoveredSearchResult(null);
+                        }}
+                        title="Close search results"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div
+                      style={{
+                        fontSize: "0.74rem",
+                        color: "var(--text-muted)",
+                        lineHeight: 1.3,
+                      }}
+                    >
+                      Hover to preview full lyrics. Click any song to import into your library.
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                        overflowY: "auto",
+                        flex: 1,
+                        minHeight: 0,
+                        paddingRight: "2px",
+                      }}
+                    >
+                      {songSearchResults.map((res, idx) => {
+                        const isHovered = hoveredSearchResult?.id === res.id;
+                        return (
+                          <div
+                            key={res.id || idx}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              padding: "10px",
+                              background: isHovered
+                                ? "rgba(99, 102, 241, 0.22)"
+                                : "rgba(255, 255, 255, 0.04)",
+                              border: isHovered
+                                ? "1px solid var(--primary)"
+                                : "1px solid rgba(255, 255, 255, 0.08)",
+                              borderRadius: "8px",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                            }}
+                            onMouseEnter={(e) => {
+                              const rect =
+                                e.currentTarget.getBoundingClientRect();
+                              setTooltipTop(
+                                Math.max(
+                                  60,
+                                  Math.min(window.innerHeight - 440, rect.top),
+                                ),
+                              );
+                              setHoveredSearchResult(res);
+                            }}
+                            onClick={() => handleSelectSearchResult(res)}
+                          >
+                            <div
+                              style={{
+                                width: "24px",
+                                height: "24px",
+                                borderRadius: "50%",
+                                background: isHovered
+                                  ? "var(--primary)"
+                                  : "rgba(99, 102, 241, 0.2)",
+                                color: isHovered ? "#fff" : "var(--primary)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontWeight: 700,
+                                fontSize: "0.75rem",
+                                flexShrink: 0,
+                              }}
+                            >
+                              {idx + 1}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontWeight: 600,
+                                  fontSize: "0.82rem",
+                                  color: isHovered
+                                    ? "#fff"
+                                    : "var(--text-main)",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {res.title}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: "0.72rem",
+                                  color: "var(--text-muted)",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {res.artist}
+                                {res.album ? ` • ${res.album}` : ""}
+                              </div>
+                            </div>
+                            <Eye
+                              size={14}
+                              style={{
+                                color: isHovered
+                                  ? "var(--primary)"
+                                  : "var(--text-muted)",
+                                flexShrink: 0,
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{
+                        fontSize: "0.78rem",
+                        padding: "7px 10px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                      }}
+                      onClick={() => {
+                        setShowSearchResultsModal(false);
+                        setHoveredSearchResult(null);
+                      }}
+                    >
+                      Back to Saved Songs
+                    </button>
+                  </div>
+                )}
+
                 <button
                   className="btn btn-primary"
                   style={{
@@ -1892,11 +3006,7 @@ export default function ControlPanel() {
                     setActiveSongTitle("");
                     setActiveSongArtist("");
                     setLyrics("");
-                    setActiveSongSettings({
-                      layout: "LT",
-                      linesMode: 1,
-                      fontSize: 5.5,
-                    });
+                    setActiveSongSettings(defaultSongSettings);
                     setSongViewMode("edit");
                   }}
                 >
@@ -1956,6 +3066,9 @@ export default function ControlPanel() {
                       placeholder="Artist (Optional)"
                       value={songSearchArtist}
                       onChange={(e) => setSongSearchArtist(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleOnlineSongSearch();
+                      }}
                     />
                     <input
                       type="text"
@@ -1963,6 +3076,9 @@ export default function ControlPanel() {
                       placeholder="Song Title"
                       value={songSearchTitle}
                       onChange={(e) => setSongSearchTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleOnlineSongSearch();
+                      }}
                     />
                     <button
                       className="btn btn-primary"
@@ -1988,23 +3104,69 @@ export default function ControlPanel() {
                   }}
                 />
 
-                <div>
-                  <h4
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    flex: 1,
+                    minHeight: 0,
+                  }}
+                >
+                  <div
                     style={{
-                      fontSize: "0.8rem",
-                      color: "var(--text-muted)",
-                      textTransform: "uppercase",
-                      marginBottom: "8px",
                       display: "flex",
                       alignItems: "center",
-                      gap: "4px",
+                      justifyContent: "space-between",
+                      marginBottom: "10px",
+                      flexShrink: 0,
                     }}
                   >
-                    <Database size={12} /> Saved Songs
-                  </h4>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <h4
+                        style={{
+                          fontSize: "0.82rem",
+                          fontWeight: 600,
+                          color: "var(--text-main)",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                          margin: 0,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <Database
+                          size={13}
+                          style={{ color: "var(--primary)" }}
+                        />{" "}
+                        Saved Songs
+                      </h4>
+                      <span
+                        style={{
+                          fontSize: "0.72rem",
+                          padding: "2px 8px",
+                          borderRadius: "10px",
+                          background: "rgba(255, 255, 255, 0.08)",
+                          color: "var(--text-muted)",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {savedSongs.length}
+                      </span>
+                    </div>
+                  </div>
                   {savedSongs.length === 0 ? (
                     <p
-                      style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}
+                      style={{
+                        fontSize: "0.8rem",
+                        color: "var(--text-muted)",
+                      }}
                     >
                       No songs saved yet. Add them in the Dashboard.
                     </p>
@@ -2014,9 +3176,10 @@ export default function ControlPanel() {
                         display: "flex",
                         flexDirection: "column",
                         gap: "6px",
-                        maxHeight: "250px",
+                        flex: 1,
                         overflowY: "auto",
                         paddingRight: "4px",
+                        minHeight: 0,
                       }}
                     >
                       {savedSongs.map((s, idx) => (
@@ -2024,51 +3187,32 @@ export default function ControlPanel() {
                           key={s.id || idx}
                           style={{
                             padding: "8px",
-                            background: "rgba(255,255,255,0.05)",
+                            background:
+                              s.id === activeSongId
+                                ? "rgba(79, 70, 229, 0.2)"
+                                : "rgba(255,255,255,0.05)",
                             borderRadius: "6px",
                             fontSize: "0.85rem",
                             cursor: "pointer",
-                            border: "1px solid transparent",
+                            border:
+                              s.id === activeSongId
+                                ? "1px solid var(--primary)"
+                                : "1px solid transparent",
                             transition: "all 0.2s",
                             display: "flex",
                             justifyContent: "space-between",
                             alignItems: "flex-start",
                           }}
-                          onClick={() => {
-                            setActiveSongId(s.id);
-                            setActiveSongTitle(s.title || "");
-                            setActiveSongArtist(s.artist || "");
-                            setLyrics(s.lyrics);
-                            setActiveSongSettings(
-                              s.settings || {
-                                layout: "LT",
-                                linesMode: 1,
-                                fontSize: 5.5,
-                              },
-                            );
-
-                            // Merge song's specific settings into the live projector, but keep current backgrounds
-                            if (s.settings) {
-                              const {
-                                text,
-                                title,
-                                type,
-                                backgroundMode,
-                                backgroundColor,
-                                backgroundUrl,
-                                ...displaySettings
-                              } = s.settings;
-                              projectLive(displaySettings, false, true);
-                            }
-
-                            setSongViewMode("play");
-                          }}
+                          onClick={() => handleSelectSong(s, "none")}
                           onMouseEnter={(e) =>
                             (e.currentTarget.style.borderColor =
                               "var(--primary)")
                           }
                           onMouseLeave={(e) =>
-                            (e.currentTarget.style.borderColor = "transparent")
+                            (e.currentTarget.style.borderColor =
+                              s.id === activeSongId
+                                ? "var(--primary)"
+                                : "transparent")
                           }
                         >
                           <div style={{ flex: 1, overflow: "hidden" }}>
@@ -2097,19 +3241,9 @@ export default function ControlPanel() {
                             )}
                           </div>
                           <button
-                            onClick={async (e) => {
+                            onClick={(e) => {
                               e.stopPropagation();
-                              if (window.confirm(`Delete song: ${s.title}?`)) {
-                                try {
-                                  await deleteSong(s.id);
-                                  loadSongs();
-                                  import("react-hot-toast").then((module) =>
-                                    module.toast.success(`Deleted ${s.title}`),
-                                  );
-                                } catch (err) {
-                                  console.error("Failed to delete song", err);
-                                }
-                              }
+                              setSongToDelete({ id: s.id, title: s.title });
                             }}
                             style={{
                               background: "transparent",
@@ -2136,6 +3270,537 @@ export default function ControlPanel() {
                       ))}
                     </div>
                   )}
+
+                  {savedSongs.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: "10px",
+                        paddingTop: "10px",
+                        borderTop: "1px solid var(--border-subtle)",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "8px",
+                          color: "#ef4444",
+                          background: "rgba(239, 68, 68, 0.08)",
+                          borderColor: "rgba(239, 68, 68, 0.25)",
+                          fontSize: "0.8rem",
+                          fontWeight: 500,
+                          padding: "8px 12px",
+                          borderRadius: "6px",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background =
+                            "rgba(239, 68, 68, 0.16)";
+                          e.currentTarget.style.borderColor =
+                            "rgba(239, 68, 68, 0.4)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background =
+                            "rgba(239, 68, 68, 0.08)";
+                          e.currentTarget.style.borderColor =
+                            "rgba(239, 68, 68, 0.25)";
+                        }}
+                        onClick={handleDeleteAllSongs}
+                        title="Delete all saved songs from database"
+                      >
+                        <Trash2 size={13} /> Clear All Saved Songs (
+                        {savedSongs.length})
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "animation" && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                  height: "100%",
+                  overflowY: "auto",
+                  paddingRight: "4px",
+                }}
+              >
+                {/* Header */}
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    <Sparkles size={18} color="var(--primary)" />
+                    <h3
+                      style={{ fontSize: "1rem", fontWeight: 700, margin: 0 }}
+                    >
+                      Lyric Animations
+                    </h3>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: "0.8rem",
+                      color: "var(--text-muted)",
+                      margin: 0,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    Configure animated typography and motion presets for lyrics.
+                  </p>
+                </div>
+
+                {/* Target Song Context Card */}
+                <div
+                  style={{
+                    padding: "10px 12px",
+                    background: activeSongTitle
+                      ? "rgba(59, 130, 246, 0.12)"
+                      : "rgba(255, 255, 255, 0.05)",
+                    border: `1px solid ${activeSongTitle ? "rgba(59, 130, 246, 0.3)" : "rgba(255, 255, 255, 0.1)"}`,
+                    borderRadius: "8px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "8px",
+                  }}
+                >
+                  <div style={{ overflow: "hidden" }}>
+                    <span
+                      style={{
+                        fontSize: "0.7rem",
+                        textTransform: "uppercase",
+                        fontWeight: 700,
+                        letterSpacing: "0.05em",
+                        color: activeSongTitle
+                          ? "var(--primary)"
+                          : "var(--text-muted)",
+                        display: "block",
+                        marginBottom: "2px",
+                      }}
+                    >
+                      {activeSongTitle
+                        ? "Active Song Settings"
+                        : "Default Song Profile"}
+                    </span>
+                    <div
+                      style={{
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {activeSongTitle || "Global Default (No song selected)"}
+                    </div>
+                  </div>
+                  {activeSongTitle && (
+                    <button
+                      className="btn btn-secondary"
+                      style={{
+                        padding: "4px 8px",
+                        fontSize: "0.75rem",
+                        flexShrink: 0,
+                      }}
+                      onClick={() => setActiveTab("songs")}
+                      title="Switch Song"
+                    >
+                      Switch
+                    </button>
+                  )}
+                </div>
+
+                {/* Master Kinetic Animation Toggle */}
+                <div
+                  style={{
+                    padding: "14px",
+                    background: activeSongSettings.enableKineticTypography
+                      ? "linear-gradient(135deg, rgba(37, 99, 235, 0.2), rgba(16, 185, 129, 0.15))"
+                      : "rgba(255, 255, 255, 0.03)",
+                    border: activeSongSettings.enableKineticTypography
+                      ? "1px solid rgba(59, 130, 246, 0.4)"
+                      : "1px solid rgba(255, 255, 255, 0.08)",
+                    borderRadius: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    cursor: "pointer",
+                    transition: "all 0.2s ease",
+                  }}
+                  onClick={() =>
+                    updateActiveSongSettings({
+                      enableKineticTypography:
+                        !activeSongSettings.enableKineticTypography,
+                    })
+                  }
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: "0.9rem",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span>Enable Kinetic Typography</span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                        marginTop: "2px",
+                      }}
+                    >
+                      {activeSongSettings.enableKineticTypography
+                        ? "Active — Animated lyrics during projection"
+                        : "Off — Standard static lyric projection"}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      width: "44px",
+                      height: "24px",
+                      background: activeSongSettings.enableKineticTypography
+                        ? "var(--primary)"
+                        : "rgba(255, 255, 255, 0.2)",
+                      borderRadius: "12px",
+                      position: "relative",
+                      transition: "background 0.2s",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: "18px",
+                        height: "18px",
+                        borderRadius: "50%",
+                        background: "white",
+                        position: "absolute",
+                        top: "3px",
+                        left: activeSongSettings.enableKineticTypography
+                          ? "23px"
+                          : "3px",
+                        transition: "left 0.2s",
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Tempo / Speed selector */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                    opacity: activeSongSettings.enableKineticTypography
+                      ? 1
+                      : 0.6,
+                  }}
+                >
+                  <label
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Animation Tempo / Speed
+                  </label>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 1fr 1fr",
+                      gap: "6px",
+                    }}
+                  >
+                    {(["slow", "medium", "fast"] as const).map((tempo) => {
+                      const isSelected =
+                        (activeSongSettings.kineticTempo || "fast") === tempo;
+                      return (
+                        <button
+                          key={tempo}
+                          type="button"
+                          className={`btn ${isSelected ? "btn-primary" : "btn-secondary"}`}
+                          style={{
+                            padding: "8px 4px",
+                            fontSize: "0.8rem",
+                            fontWeight: isSelected ? 700 : 500,
+                            textAlign: "center",
+                            borderRadius: "6px",
+                            border: isSelected
+                              ? "1px solid var(--primary)"
+                              : "1px solid rgba(255,255,255,0.1)",
+                          }}
+                          onClick={() =>
+                            updateActiveSongSettings({ kineticTempo: tempo })
+                          }
+                        >
+                          {tempo === "slow" && "🐢 Slow"}
+                          {tempo === "medium" && "⚡ Medium"}
+                          {tempo === "fast" && "🚀 Fast"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Animation Templates Section */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "10px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "0.75rem",
+                        fontWeight: 700,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      Animation Templates (1 Available)
+                    </span>
+                  </div>
+
+                  {/* Template 1: Dynamic AI Kinetic */}
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.75)",
+                      border: "2px solid var(--primary)",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      position: "relative",
+                      boxShadow: "0 4px 15px rgba(59, 130, 246, 0.15)",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: "6px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>
+                          Dynamic AI Kinetic
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          padding: "2px 8px",
+                          background: "var(--primary)",
+                          color: "white",
+                          borderRadius: "12px",
+                          fontSize: "0.7rem",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        <Check size={12} /> Active
+                      </span>
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "0.75rem",
+                        color: "var(--text-muted)",
+                        margin: "0 0 10px 0",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Varies animation style dynamically per phrase — guessing
+                      stomp, whip pan, bounce, 3D flip, and roll animations
+                      word-by-word.
+                    </p>
+
+                    {/* Interactive Live Preview */}
+                    <div
+                      style={{
+                        background: "#05070f",
+                        borderRadius: "8px",
+                        padding: "16px 12px",
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        minHeight: "85px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        position: "relative",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "4px",
+                          right: "6px",
+                          zIndex: 2,
+                        }}
+                      >
+                        <button
+                          className="icon-btn"
+                          style={{
+                            padding: "3px 6px",
+                            fontSize: "0.7rem",
+                            background: "rgba(255,255,255,0.08)",
+                            borderRadius: "4px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "3px",
+                          }}
+                          onClick={() => setPreviewAnimationKey((k) => k + 1)}
+                          title="Replay Animation Preview"
+                        >
+                          <RotateCcw size={11} /> Replay
+                        </button>
+                      </div>
+
+                      <div
+                        key={previewAnimationKey}
+                        style={{
+                          width: "100%",
+                          textAlign: "center",
+                          fontSize: "1.1rem",
+                          fontWeight: 700,
+                        }}
+                      >
+                        <AnimatedLyric
+                          text={
+                            songChunks[activeSongChunkIndex ?? 0] ||
+                            "Amazing grace how sweet the sound"
+                          }
+                          isEnabled={activeSongSettings.enableKineticTypography}
+                          kineticTempo={
+                            activeSongSettings.kineticTempo || "fast"
+                          }
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Upcoming Templates (Placeholders) */}
+                  <div
+                    style={{
+                      marginTop: "4px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: "0.7rem",
+                        fontWeight: 600,
+                        color: "var(--text-muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      Upcoming Templates (In Development)
+                    </span>
+
+                    {[
+                      {
+                        title: "Template 2: Uniform Kinetic Stomp",
+                        desc: "Follows a single synchronized stomp rhythm for high-energy songs.",
+                      },
+                      {
+                        title: "Template 3: Smooth Word Reveal",
+                        desc: "Linear word-by-word reveal along a steady, gentle worship cadence.",
+                      },
+                      {
+                        title: "Template 4: Cinematic Drift",
+                        desc: "Subtle majestic float with soft blur and graceful fade transitions.",
+                      },
+                    ].map((t) => (
+                      <div
+                        key={t.title}
+                        style={{
+                          padding: "10px 12px",
+                          background: "rgba(255, 255, 255, 0.02)",
+                          border: "1px dashed rgba(255, 255, 255, 0.12)",
+                          borderRadius: "8px",
+                          opacity: 0.65,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              fontSize: "0.8rem",
+                              color: "#ddd",
+                            }}
+                          >
+                            {t.title}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "0.65rem",
+                              padding: "1px 6px",
+                              borderRadius: "4px",
+                              background: "rgba(255, 255, 255, 0.1)",
+                              color: "var(--text-muted)",
+                              fontWeight: 600,
+                            }}
+                          >
+                            Coming Soon
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "0.7rem",
+                            color: "var(--text-muted)",
+                          }}
+                        >
+                          {t.desc}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -2172,14 +3837,16 @@ export default function ControlPanel() {
             </button>
             <div style={{ flex: 1 }}></div>
 
-            {activeTab === "songs" && (
+            {activeTab !== "bible" && (
               <div
                 style={{
                   display: "flex",
+                  alignItems: "center",
                   background: "rgba(0,0,0,0.3)",
                   borderRadius: "6px",
                   padding: "4px",
                   marginRight: "1rem",
+                  gap: "4px",
                 }}
               >
                 <button
@@ -2215,68 +3882,74 @@ export default function ControlPanel() {
                 <div
                   style={{
                     width: "1px",
+                    height: "16px",
                     background: "rgba(255,255,255,0.2)",
-                    margin: "0 4px",
+                    margin: "0 2px",
                   }}
                 />
                 <button
-                  className={`btn ${liveState.enableKineticTypography ? "btn-primary" : "btn-secondary"}`}
+                  className="btn btn-secondary"
                   style={{
-                    padding: "4px 12px",
+                    padding: "4px 8px",
                     fontSize: "0.8rem",
                     border: "none",
-                    background: liveState.enableKineticTypography
+                    background: "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
+                  onClick={() => goToPrevSong(true)}
+                  title="Previous Song (PageUp or [)"
+                  disabled={savedSongs.length <= 1}
+                >
+                  <ChevronLeft size={14} /> Song
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  style={{
+                    padding: "4px 8px",
+                    fontSize: "0.8rem",
+                    border: "none",
+                    background: "transparent",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "2px",
+                  }}
+                  onClick={() => goToNextSong(true)}
+                  title="Next Song (PageDown or ])"
+                  disabled={savedSongs.length <= 1}
+                >
+                  Song <ChevronRight size={14} />
+                </button>
+                <div
+                  style={{
+                    width: "1px",
+                    height: "16px",
+                    background: "rgba(255,255,255,0.2)",
+                    margin: "0 2px",
+                  }}
+                />
+                <button
+                  className={`btn ${activeSongSettings.enableKineticTypography ? "btn-primary" : "btn-secondary"}`}
+                  style={{
+                    padding: "4px 10px",
+                    fontSize: "0.8rem",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    background: activeSongSettings.enableKineticTypography
                       ? "var(--primary)"
                       : "transparent",
                   }}
-                  onClick={() =>
-                    projectLive({
-                      enableKineticTypography:
-                        !liveState.enableKineticTypography,
-                    })
-                  }
-                  title="Toggle Kinetic Typography for Songs"
+                  onClick={() => setActiveTab("animation")}
+                  title="Configure Lyric Animations in Animation Tab"
                 >
-                  Kinetic Typography
+                  <Sparkles size={13} />
+                  {activeSongSettings.enableKineticTypography
+                    ? "Kinetic ON"
+                    : "Animation"}
                 </button>
-                {liveState.enableKineticTypography && (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: "2px",
-                      background: "var(--surface)",
-                      padding: "2px",
-                      borderRadius: "4px",
-                    }}
-                  >
-                    {["slow", "medium", "fast"].map((tempo) => (
-                      <button
-                        key={tempo}
-                        style={{
-                          borderRadius: "3px",
-                          padding: "2px 8px",
-                          fontSize: "0.75rem",
-                          border: "none",
-                          cursor: "pointer",
-                          background:
-                            liveState.kineticTempo === tempo
-                              ? "var(--primary)"
-                              : "transparent",
-                          color:
-                            liveState.kineticTempo === tempo
-                              ? "#fff"
-                              : "var(--text-muted)",
-                        }}
-                        onClick={() =>
-                          projectLive({ kineticTempo: tempo as any })
-                        }
-                        title={`Set animation tempo to ${tempo}`}
-                      >
-                        {tempo.charAt(0).toUpperCase() + tempo.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -2629,7 +4302,20 @@ export default function ControlPanel() {
                   boxShadow: "0 4px 12px rgba(79, 70, 229, 0.4)",
                   transition: "transform 0.2s",
                 }}
-                onClick={() => {}}
+                onClick={() => {
+                  if (activeTab === "songs" && songChunks.length > 0) {
+                    const idx =
+                      activeSongChunkIndex !== null ? activeSongChunkIndex : 0;
+                    handleProjectSongChunk(songChunks[idx], idx);
+                  } else if (activeTab === "bible" && activeChapter) {
+                    const verse = activeProjectedRef
+                      ? activeChapter.verses.find(
+                          (v) => v.number === activeProjectedRef.verse,
+                        )
+                      : activeChapter.verses[0];
+                    if (verse) handleProjectVerse(verse);
+                  }
+                }}
                 onMouseEnter={(e) =>
                   (e.currentTarget.style.transform = "scale(1.05)")
                 }
@@ -2643,7 +4329,9 @@ export default function ControlPanel() {
 
             <div className="main-panel-stacks">
               <div className="control-stack">
-                <span className="control-stack-label">Lines</span>
+                <span className="control-stack-label">
+                  Lines {isBibleContext ? "(Bible)" : "(Song)"}
+                </span>
                 <div
                   className="segmented-picker"
                   style={{
@@ -2654,51 +4342,39 @@ export default function ControlPanel() {
                   }}
                 >
                   <button
-                    className={`seg-btn ${liveState.linesMode === 1 ? "active" : ""}`}
-                    onClick={() => {
-                      projectLive({ linesMode: 1 });
-                      setActiveSongChunkIndex(null);
-                    }}
+                    className={`seg-btn ${activeLinesMode === 1 ? "active" : ""}`}
+                    onClick={() => handleLinesModeChange(1)}
                   >
                     1
                   </button>
                   <button
-                    className={`seg-btn ${liveState.linesMode === 2 ? "active" : ""}`}
-                    onClick={() => {
-                      projectLive({ linesMode: 2 });
-                      setActiveSongChunkIndex(null);
-                    }}
+                    className={`seg-btn ${activeLinesMode === 2 ? "active" : ""}`}
+                    onClick={() => handleLinesModeChange(2)}
                   >
                     2
                   </button>
                   <button
-                    className={`seg-btn ${liveState.linesMode === 3 ? "active" : ""}`}
+                    className={`seg-btn ${activeLinesMode === 3 ? "active" : ""}`}
                     onClick={() => {
-                      if (liveState.enableKineticTypography) return;
-                      projectLive({ linesMode: 3 });
-                      setActiveSongChunkIndex(null);
+                      if (isCurrentKinetic) return;
+                      handleLinesModeChange(3);
                     }}
                     style={{
-                      opacity: liveState.enableKineticTypography ? 0.3 : 1,
-                      cursor: liveState.enableKineticTypography
-                        ? "not-allowed"
-                        : "pointer",
+                      opacity: isCurrentKinetic ? 0.3 : 1,
+                      cursor: isCurrentKinetic ? "not-allowed" : "pointer",
                     }}
                   >
                     3
                   </button>
                   <button
-                    className={`seg-btn ${liveState.linesMode === 4 ? "active" : ""}`}
+                    className={`seg-btn ${activeLinesMode === 4 ? "active" : ""}`}
                     onClick={() => {
-                      if (liveState.enableKineticTypography) return;
-                      projectLive({ linesMode: 4 });
-                      setActiveSongChunkIndex(null);
+                      if (isCurrentKinetic) return;
+                      handleLinesModeChange(4);
                     }}
                     style={{
-                      opacity: liveState.enableKineticTypography ? 0.3 : 1,
-                      cursor: liveState.enableKineticTypography
-                        ? "not-allowed"
-                        : "pointer",
+                      opacity: isCurrentKinetic ? 0.3 : 1,
+                      cursor: isCurrentKinetic ? "not-allowed" : "pointer",
                     }}
                   >
                     4
@@ -2707,10 +4383,8 @@ export default function ControlPanel() {
                     className="seg-btn"
                     onClick={() => {}}
                     style={{
-                      opacity: liveState.enableKineticTypography ? 0.3 : 1,
-                      cursor: liveState.enableKineticTypography
-                        ? "not-allowed"
-                        : "pointer",
+                      opacity: isCurrentKinetic ? 0.3 : 1,
+                      cursor: isCurrentKinetic ? "not-allowed" : "pointer",
                     }}
                   >
                     5
@@ -2719,10 +4393,8 @@ export default function ControlPanel() {
                     className="seg-btn"
                     onClick={() => {}}
                     style={{
-                      opacity: liveState.enableKineticTypography ? 0.3 : 1,
-                      cursor: liveState.enableKineticTypography
-                        ? "not-allowed"
-                        : "pointer",
+                      opacity: isCurrentKinetic ? 0.3 : 1,
+                      cursor: isCurrentKinetic ? "not-allowed" : "pointer",
                     }}
                   >
                     6
@@ -2731,7 +4403,9 @@ export default function ControlPanel() {
               </div>
 
               <div className="control-stack">
-                <span className="control-stack-label">Mode</span>
+                <span className="control-stack-label">
+                  Mode {isBibleContext ? "(Bible)" : "(Song)"}
+                </span>
                 <div
                   className="segmented-picker"
                   style={{
@@ -2742,22 +4416,27 @@ export default function ControlPanel() {
                   }}
                 >
                   <button
-                    className={`seg-btn ${liveState.layout === "FS" ? "active" : ""}`}
-                    onClick={() => projectLive({ layout: "FS" })}
+                    className={`seg-btn ${activeLayout === "FS" ? "active" : ""}`}
+                    onClick={() => handleLayoutChange("FS")}
                   >
                     FS
                   </button>
                   <button
-                    className={`seg-btn ${liveState.layout === "LT" ? "active" : ""}`}
-                    onClick={() => projectLive({ layout: "LT" })}
+                    className={`seg-btn ${activeLayout === "LT" ? "active" : ""}`}
+                    onClick={() => handleLayoutChange("LT")}
                   >
                     LT
                   </button>
                 </div>
-                {liveState.layout === "LT" && (
+                {activeLayout === "LT" && isBibleContext && (
                   <button
                     className="action-btn"
-                    style={{ marginTop: "8px", padding: "6px 8px", fontSize: "0.8rem", width: "100%" }}
+                    style={{
+                      marginTop: "8px",
+                      padding: "6px 8px",
+                      fontSize: "0.8rem",
+                      width: "100%",
+                    }}
                     onClick={() => setIsThemesModalOpen(true)}
                     title="Choose Lower Third Theme"
                   >
@@ -2767,7 +4446,9 @@ export default function ControlPanel() {
               </div>
 
               <div className="control-stack">
-                <span className="control-stack-label">Position Y</span>
+                <span className="control-stack-label">
+                  Pos Y {isBibleContext ? "(Bible)" : "(Song)"}
+                </span>
                 <div
                   className="segmented-picker"
                   style={{
@@ -2778,20 +4459,20 @@ export default function ControlPanel() {
                   }}
                 >
                   <button
-                    className={`seg-btn ${liveState.verticalAlign === "top" ? "active" : ""}`}
-                    onClick={() => projectLive({ verticalAlign: "top" })}
+                    className={`seg-btn ${activeVerticalAlign === "top" ? "active" : ""}`}
+                    onClick={() => handleVerticalAlignChange("top")}
                   >
                     Top
                   </button>
                   <button
-                    className={`seg-btn ${liveState.verticalAlign === "middle" ? "active" : ""}`}
-                    onClick={() => projectLive({ verticalAlign: "middle" })}
+                    className={`seg-btn ${activeVerticalAlign === "middle" ? "active" : ""}`}
+                    onClick={() => handleVerticalAlignChange("middle")}
                   >
                     Mid
                   </button>
                   <button
-                    className={`seg-btn ${liveState.verticalAlign === "bottom" ? "active" : ""}`}
-                    onClick={() => projectLive({ verticalAlign: "bottom" })}
+                    className={`seg-btn ${activeVerticalAlign === "bottom" ? "active" : ""}`}
+                    onClick={() => handleVerticalAlignChange("bottom")}
                   >
                     Bot
                   </button>
@@ -2799,7 +4480,9 @@ export default function ControlPanel() {
               </div>
 
               <div className="control-stack">
-                <span className="control-stack-label">Position X</span>
+                <span className="control-stack-label">
+                  Pos X {isBibleContext ? "(Bible)" : "(Song)"}
+                </span>
                 <div
                   className="segmented-picker"
                   style={{
@@ -2811,20 +4494,20 @@ export default function ControlPanel() {
                   }}
                 >
                   <button
-                    className={`seg-btn ${liveState.horizontalAlign === "left" ? "active" : ""}`}
-                    onClick={() => projectLive({ horizontalAlign: "left" })}
+                    className={`seg-btn ${activeHorizontalAlign === "left" ? "active" : ""}`}
+                    onClick={() => handleHorizontalAlignChange("left")}
                   >
                     L
                   </button>
                   <button
-                    className={`seg-btn ${liveState.horizontalAlign === "center" ? "active" : ""}`}
-                    onClick={() => projectLive({ horizontalAlign: "center" })}
+                    className={`seg-btn ${activeHorizontalAlign === "center" ? "active" : ""}`}
+                    onClick={() => handleHorizontalAlignChange("center")}
                   >
                     C
                   </button>
                   <button
-                    className={`seg-btn ${liveState.horizontalAlign === "right" ? "active" : ""}`}
-                    onClick={() => projectLive({ horizontalAlign: "right" })}
+                    className={`seg-btn ${activeHorizontalAlign === "right" ? "active" : ""}`}
+                    onClick={() => handleHorizontalAlignChange("right")}
                   >
                     R
                   </button>
@@ -2843,26 +4526,32 @@ export default function ControlPanel() {
                   }}
                 >
                   <button
-                    className={`seg-btn ${liveState.backgroundMode === "solid" ? "active" : ""}`}
-                    onClick={() => projectLive({ backgroundMode: "solid" })}
+                    className={`seg-btn ${globalSettings.backgroundMode === "solid" ? "active" : ""}`}
+                    onClick={() =>
+                      updateGlobalSettings({ backgroundMode: "solid" })
+                    }
                   >
                     Solid
                   </button>
                   <button
-                    className={`seg-btn ${liveState.backgroundMode === "image" ? "active" : ""}`}
-                    onClick={() => projectLive({ backgroundMode: "image" })}
+                    className={`seg-btn ${globalSettings.backgroundMode === "image" ? "active" : ""}`}
+                    onClick={() =>
+                      updateGlobalSettings({ backgroundMode: "image" })
+                    }
                   >
                     Image
                   </button>
                   <button
-                    className={`seg-btn ${liveState.backgroundMode === "video" ? "active" : ""}`}
-                    onClick={() => projectLive({ backgroundMode: "video" })}
+                    className={`seg-btn ${globalSettings.backgroundMode === "video" ? "active" : ""}`}
+                    onClick={() =>
+                      updateGlobalSettings({ backgroundMode: "video" })
+                    }
                   >
                     Video
                   </button>
                 </div>
 
-                {liveState.backgroundMode === "solid" ? (
+                {globalSettings.backgroundMode === "solid" ? (
                   <div
                     style={{
                       display: "flex",
@@ -2880,9 +4569,11 @@ export default function ControlPanel() {
                     >
                       <input
                         type="color"
-                        value={liveState.backgroundColor}
+                        value={globalSettings.backgroundColor}
                         onChange={(e) =>
-                          projectLive({ backgroundColor: e.target.value })
+                          updateGlobalSettings({
+                            backgroundColor: e.target.value,
+                          })
                         }
                         style={{
                           position: "absolute",
@@ -2898,16 +4589,16 @@ export default function ControlPanel() {
                       />
                     </div>
                     <button
-                      className={`seg-btn ${liveState.transparentBackground ? "active" : ""}`}
+                      className={`seg-btn ${globalSettings.transparentBackground ? "active" : ""}`}
                       style={{ flex: 1, height: "30px", fontSize: "11px" }}
                       onClick={() =>
-                        projectLive({
+                        updateGlobalSettings({
                           transparentBackground:
-                            !liveState.transparentBackground,
+                            !globalSettings.transparentBackground,
                         })
                       }
                     >
-                      {liveState.transparentBackground
+                      {globalSettings.transparentBackground
                         ? "TRANSPARENT: ON"
                         : "TRANSPARENT: OFF"}
                     </button>
@@ -2934,11 +4625,13 @@ export default function ControlPanel() {
                       }}
                     >
                       Upload{" "}
-                      {liveState.backgroundMode === "image" ? "Image" : "Video"}
+                      {globalSettings.backgroundMode === "image"
+                        ? "Image"
+                        : "Video"}
                       <input
                         type="file"
                         accept={
-                          liveState.backgroundMode === "image"
+                          globalSettings.backgroundMode === "image"
                             ? "image/*"
                             : "video/*"
                         }
@@ -2946,7 +4639,7 @@ export default function ControlPanel() {
                         onChange={handleMediaUpload}
                       />
                     </label>
-                    {liveState.backgroundUrl?.startsWith("local:") && (
+                    {globalSettings.backgroundUrl?.startsWith("local:") && (
                       <span style={{ fontSize: "10px", color: "#10b981" }}>
                         Media Active ✓
                       </span>
@@ -2981,9 +4674,11 @@ export default function ControlPanel() {
                     <input
                       type="number"
                       step="0.5"
-                      value={liveState.bibleFontSize}
+                      value={bibleSettings.bibleFontSize}
                       onChange={(e) =>
-                        projectLive({ bibleFontSize: Number(e.target.value) })
+                        updateBibleSettings({
+                          bibleFontSize: Number(e.target.value),
+                        })
                       }
                       style={{
                         background: "rgba(15, 23, 42, 0.5)",
@@ -3012,9 +4707,11 @@ export default function ControlPanel() {
                     <input
                       type="number"
                       step="0.5"
-                      value={liveState.songFontSize}
+                      value={activeSongSettings.songFontSize}
                       onChange={(e) =>
-                        projectLive({ songFontSize: Number(e.target.value) })
+                        updateActiveSongSettings({
+                          songFontSize: Number(e.target.value),
+                        })
                       }
                       style={{
                         background: "rgba(15, 23, 42, 0.5)",
@@ -3048,9 +4745,11 @@ export default function ControlPanel() {
                     type="range"
                     min="0"
                     max="100"
-                    value={liveState.shadowIntensity ?? 80}
+                    value={globalSettings.shadowIntensity ?? 80}
                     onChange={(e) =>
-                      projectLive({ shadowIntensity: parseInt(e.target.value) })
+                      updateGlobalSettings({
+                        shadowIntensity: parseInt(e.target.value),
+                      })
                     }
                     style={{ width: "100%" }}
                   />
@@ -3061,7 +4760,7 @@ export default function ControlPanel() {
                       minWidth: "24px",
                     }}
                   >
-                    {liveState.shadowIntensity ?? 80}%
+                    {globalSettings.shadowIntensity ?? 80}%
                   </span>
                 </div>
               </div>

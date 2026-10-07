@@ -24,26 +24,31 @@ Web-Projector is a lightweight, fully web-based live presentation and projection
 ## Getting Started
 
 ### Prerequisites
+
 Make sure you have [Node.js](https://nodejs.org/) installed on your machine.
 
 ### Installation
 
 1. **Clone the repository:**
+
    ```bash
-   git clone https://github.com/your-username/web-projector.git
+   git clone https://github.com/kachidegreat/web-projector.git
    cd web-projector
    ```
 
 2. **Install dependencies:**
+
    ```bash
    npm install
    ```
 
 3. **Start the development server:**
+
    ```bash
    npm run dev
    ```
-   *The server will start (usually on `http://localhost:5173`).*
+
+   _The server will start (usually on `http://localhost:5173`)._
 
 4. **Open the Control Panel:**
    Navigate to the local URL provided by Vite in your browser to access the main control interface.
@@ -58,7 +63,9 @@ Make sure you have [Node.js](https://nodejs.org/) installed on your machine.
 - **Settings**: Adjust the global display styles such as fonts, backgrounds, and lower-thirds.
 
 ## Contributing
+
 Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](../../issues).
 
 ## License
+
 This project is open-source and available under the [MIT License](LICENSE).

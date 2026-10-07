@@ -84,6 +84,30 @@ export const deleteSong = async (id: string) => {
   });
 };
 
+export const deleteAllSongs = async () => {
+  const db = await getDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(SONG_STORE, 'readwrite');
+    const store = tx.objectStore(SONG_STORE);
+    const request = store.clear();
+    let resolved = false;
+    request.onsuccess = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+    request.onerror = () => reject(request.error);
+    tx.oncomplete = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+    tx.onerror = () => reject(tx.error);
+  });
+};
+
 export const getBibles = async () => {
   const db = await getDB();
   return new Promise<any[]>((resolve, reject) => {

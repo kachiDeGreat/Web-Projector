@@ -1,109 +1,245 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { updateLiveState, subscribeToLiveState } from '../services/dbService';
 
-export interface LiveState {
-  type: 'bible' | 'song' | 'clear';
-  title: string;
-  text: string;
-  backgroundMode: 'solid' | 'image' | 'video';
-  backgroundColor: string;
-  backgroundUrl: string;
-  linesMode: 1 | 2 | 3 | 4;
+export interface BibleSettings {
+  layout: 'FS' | 'LT';
   verticalAlign: 'top' | 'middle' | 'bottom';
   horizontalAlign: 'left' | 'center' | 'right';
-  layout: 'FS' | 'LT';
-  animation: 'none' | 'fade' | 'slide' | 'zoom';
-  shadowIntensity: number;
-  transparentBackground: boolean;
-  fontFamily: string;
+  linesMode: 1 | 2 | 3 | 4;
   bibleFontSize: number;
-  songFontSize: number;
-  refFontSize: number;
-  refPosition: 'top' | 'bottom';
-  refAlign: 'left' | 'center' | 'right';
-  songTextTransform: 'none' | 'uppercase' | 'capitalize' | 'lowercase';
-  bibleTextTransform: 'none' | 'uppercase' | 'capitalize' | 'lowercase';
-  refTextTransform: 'none' | 'uppercase' | 'capitalize' | 'lowercase';
-  songFontWeight: string;
   bibleFontWeight: string;
-  refFontWeight: string;
-  paddingLR: number;
+  bibleTextTransform: 'none' | 'uppercase' | 'capitalize' | 'lowercase';
+  bibleLowerThirdStyle: 'theme-1' | 'theme-2' | 'theme-3' | 'theme-4' | 'theme-5' | 'torn-edge' | 'none';
   lowerThirdWidth: number;
   enableLowerThirdBg: boolean;
   lowerThirdBgColor: string;
   lowerThirdBgOpacity: number;
   lowerThirdPadding: number;
-  bibleLowerThirdStyle: 'theme-1' | 'theme-2' | 'theme-3' | 'theme-4' | 'theme-5' | 'torn-edge' | 'none';
+  refFontSize: number;
+  refPosition: 'top' | 'bottom';
+  refAlign: 'left' | 'center' | 'right';
+  refTextTransform: 'none' | 'uppercase' | 'capitalize' | 'lowercase';
+  refFontWeight: string;
   refColor: string;
-  textColor: string;
+  animation: 'none' | 'fade' | 'slide' | 'zoom';
+}
+
+export interface SongSettings {
+  layout: 'FS' | 'LT';
+  verticalAlign: 'top' | 'middle' | 'bottom';
+  horizontalAlign: 'left' | 'center' | 'right';
+  linesMode: 1 | 2 | 3 | 4;
+  songFontSize: number;
+  songFontWeight: string;
+  songTextTransform: 'none' | 'uppercase' | 'capitalize' | 'lowercase';
   enableKineticTypography: boolean;
   kineticTempo: 'slow' | 'medium' | 'fast';
+  animation: 'none' | 'fade' | 'slide' | 'zoom';
+  animationTemplate?: string;
 }
 
-interface LiveContextType {
-  liveState: LiveState;
-  setLiveState: React.Dispatch<React.SetStateAction<LiveState>>;
-  projectLive: (newState: Partial<LiveState>, forceGlobalStyle?: boolean, isSongInjection?: boolean) => void;
-  clearLive: () => void;
-  saveGlobalSettings: () => void;
+export interface GlobalDisplaySettings {
+  fontFamily: string;
+  textColor: string;
+  shadowIntensity: number;
+  transparentBackground: boolean;
+  paddingLR: number;
+  backgroundMode: 'solid' | 'image' | 'video';
+  backgroundColor: string;
+  backgroundUrl: string;
 }
 
-const defaultState: LiveState = {
-  type: 'clear',
-  title: '',
-  text: '',
-  backgroundMode: 'solid',
-  backgroundColor: '#050505', // A deep black default
-  backgroundUrl: '',
-  linesMode: 2,
+export interface LiveState extends GlobalDisplaySettings, BibleSettings, SongSettings {
+  type: 'bible' | 'song' | 'clear';
+  title: string;
+  text: string;
+}
+
+export const defaultBibleSettings: BibleSettings = {
+  layout: 'LT',
   verticalAlign: 'bottom',
   horizontalAlign: 'center',
-  layout: 'FS', // Change default to FS for a better initial experience
-  animation: 'fade',
-  shadowIntensity: 80,
-  transparentBackground: false,
-  fontFamily: 'Inter',
+  linesMode: 2,
   bibleFontSize: 4.5,
-  songFontSize: 5.5,
-  refFontSize: 2.5,
-  refPosition: 'top',
-  refAlign: 'left',
-  songTextTransform: 'none',
-  bibleTextTransform: 'none',
-  refTextTransform: 'none',
-  songFontWeight: '600',
   bibleFontWeight: '600',
-  refFontWeight: 'bold',
-  paddingLR: 5,
+  bibleTextTransform: 'none',
+  bibleLowerThirdStyle: 'none',
   lowerThirdWidth: 78,
   enableLowerThirdBg: true,
   lowerThirdBgColor: '#000000',
   lowerThirdBgOpacity: 50,
   lowerThirdPadding: 3,
-  bibleLowerThirdStyle: 'none',
+  refFontSize: 2.5,
+  refPosition: 'top',
+  refAlign: 'left',
+  refTextTransform: 'none',
+  refFontWeight: 'bold',
   refColor: '#FFFFFF',
-  textColor: '#FFFFFF',
-  enableKineticTypography: false,
-  kineticTempo: 'fast'
+  animation: 'fade',
 };
 
-import { updateLiveState, subscribeToLiveState } from '../services/dbService';
+export const defaultSongSettings: SongSettings = {
+  layout: 'FS',
+  verticalAlign: 'bottom',
+  horizontalAlign: 'center',
+  linesMode: 1,
+  songFontSize: 5.5,
+  songFontWeight: '600',
+  songTextTransform: 'none',
+  enableKineticTypography: false,
+  kineticTempo: 'fast',
+  animation: 'fade',
+  animationTemplate: 'guessing-kinetic',
+};
+
+export const defaultGlobalSettings: GlobalDisplaySettings = {
+  fontFamily: 'Inter',
+  textColor: '#FFFFFF',
+  shadowIntensity: 80,
+  transparentBackground: false,
+  paddingLR: 5,
+  backgroundMode: 'solid',
+  backgroundColor: '#050505',
+  backgroundUrl: '',
+};
+
+export const buildLiveState = (
+  type: 'bible' | 'song' | 'clear',
+  content: { title: string; text: string },
+  global: GlobalDisplaySettings,
+  bible: BibleSettings,
+  song: SongSettings
+): LiveState => {
+  if (type === 'bible') {
+    return {
+      ...global,
+      ...song,
+      ...bible,
+      type: 'bible',
+      title: content.title,
+      text: content.text,
+      enableKineticTypography: false,
+    };
+  }
+  if (type === 'song') {
+    return {
+      ...global,
+      ...bible,
+      ...song,
+      type: 'song',
+      title: content.title,
+      text: content.text,
+    };
+  }
+  return {
+    ...global,
+    ...bible,
+    ...song,
+    type: 'clear',
+    title: '',
+    text: '',
+    enableKineticTypography: false,
+  };
+};
+
+const getStoredBibleSettings = (): BibleSettings => {
+  try {
+    const saved = localStorage.getItem('webProjectorBibleSettings');
+    if (saved) return { ...defaultBibleSettings, ...JSON.parse(saved) };
+    const legacy = localStorage.getItem('webProjectorSettings');
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      return {
+        ...defaultBibleSettings,
+        layout: parsed.layout || defaultBibleSettings.layout,
+        verticalAlign: parsed.verticalAlign || defaultBibleSettings.verticalAlign,
+        horizontalAlign: parsed.horizontalAlign || defaultBibleSettings.horizontalAlign,
+        linesMode: parsed.linesMode || defaultBibleSettings.linesMode,
+        bibleFontSize: parsed.bibleFontSize ?? defaultBibleSettings.bibleFontSize,
+        bibleFontWeight: parsed.bibleFontWeight || defaultBibleSettings.bibleFontWeight,
+        bibleTextTransform: parsed.bibleTextTransform || defaultBibleSettings.bibleTextTransform,
+        bibleLowerThirdStyle: parsed.bibleLowerThirdStyle || defaultBibleSettings.bibleLowerThirdStyle,
+        lowerThirdWidth: parsed.lowerThirdWidth ?? defaultBibleSettings.lowerThirdWidth,
+        enableLowerThirdBg: parsed.enableLowerThirdBg ?? defaultBibleSettings.enableLowerThirdBg,
+        lowerThirdBgColor: parsed.lowerThirdBgColor || defaultBibleSettings.lowerThirdBgColor,
+        lowerThirdBgOpacity: parsed.lowerThirdBgOpacity ?? defaultBibleSettings.lowerThirdBgOpacity,
+        lowerThirdPadding: parsed.lowerThirdPadding ?? defaultBibleSettings.lowerThirdPadding,
+        refFontSize: parsed.refFontSize ?? defaultBibleSettings.refFontSize,
+        refPosition: parsed.refPosition || defaultBibleSettings.refPosition,
+        refAlign: parsed.refAlign || defaultBibleSettings.refAlign,
+        refTextTransform: parsed.refTextTransform || defaultBibleSettings.refTextTransform,
+        refFontWeight: parsed.refFontWeight || defaultBibleSettings.refFontWeight,
+        refColor: parsed.refColor || defaultBibleSettings.refColor,
+        animation: parsed.animation || defaultBibleSettings.animation,
+      };
+    }
+  } catch (e) {
+    console.error('Failed to parse bible settings', e);
+  }
+  return defaultBibleSettings;
+};
+
+const getStoredDefaultSongSettings = (): SongSettings => {
+  try {
+    const saved = localStorage.getItem('webProjectorDefaultSongSettings');
+    if (saved) return { ...defaultSongSettings, ...JSON.parse(saved) };
+  } catch (e) {
+    console.error('Failed to parse default song settings', e);
+  }
+  return defaultSongSettings;
+};
+
+const getStoredGlobalSettings = (): GlobalDisplaySettings => {
+  try {
+    const saved = localStorage.getItem('webProjectorGlobalSettings');
+    if (saved) return { ...defaultGlobalSettings, ...JSON.parse(saved) };
+    const legacy = localStorage.getItem('webProjectorSettings');
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      return {
+        ...defaultGlobalSettings,
+        fontFamily: parsed.fontFamily || defaultGlobalSettings.fontFamily,
+        textColor: parsed.textColor || defaultGlobalSettings.textColor,
+        shadowIntensity: parsed.shadowIntensity ?? defaultGlobalSettings.shadowIntensity,
+        transparentBackground: parsed.transparentBackground ?? defaultGlobalSettings.transparentBackground,
+        paddingLR: parsed.paddingLR ?? defaultGlobalSettings.paddingLR,
+        backgroundMode: parsed.backgroundMode || defaultGlobalSettings.backgroundMode,
+        backgroundColor: parsed.backgroundColor || defaultGlobalSettings.backgroundColor,
+        backgroundUrl: parsed.backgroundUrl || defaultGlobalSettings.backgroundUrl,
+      };
+    }
+  } catch (e) {
+    console.error('Failed to parse global settings', e);
+  }
+  return defaultGlobalSettings;
+};
+
+interface LiveContextType {
+  liveState: LiveState;
+  setLiveState: React.Dispatch<React.SetStateAction<LiveState>>;
+  bibleSettings: BibleSettings;
+  updateBibleSettings: (settings: Partial<BibleSettings>) => void;
+  defaultSongSettings: SongSettings;
+  updateDefaultSongSettings: (settings: Partial<SongSettings>) => void;
+  globalSettings: GlobalDisplaySettings;
+  updateGlobalSettings: (settings: Partial<GlobalDisplaySettings>) => void;
+  projectBible: (title: string, text: string) => void;
+  projectSong: (title: string, text: string, songSettings?: Partial<SongSettings>) => void;
+  projectLive: (newState: Partial<LiveState>) => void;
+  clearLive: () => void;
+  saveGlobalSettings: () => void;
+}
 
 const LiveContext = createContext<LiveContextType | undefined>(undefined);
 
-const getInitialState = (): LiveState => {
-  try {
-    const saved = localStorage.getItem('webProjectorSettings');
-    if (saved) {
-      return { ...defaultState, ...JSON.parse(saved) };
-    }
-  } catch (e) {
-    console.error('Failed to parse local settings', e);
-  }
-  return defaultState;
-};
-
 export function LiveProvider({ children }: { children: ReactNode }) {
-  const [liveState, setLiveState] = useState<LiveState>(getInitialState);
+  const [bibleSettings, setBibleSettings] = useState<BibleSettings>(getStoredBibleSettings);
+  const [defaultSongSettingsState, setDefaultSongSettingsState] = useState<SongSettings>(getStoredDefaultSongSettings);
+  const [globalSettings, setGlobalSettings] = useState<GlobalDisplaySettings>(getStoredGlobalSettings);
+
+  const [liveState, setLiveState] = useState<LiveState>(() =>
+    buildLiveState('clear', { title: '', text: '' }, getStoredGlobalSettings(), getStoredBibleSettings(), getStoredDefaultSongSettings())
+  );
 
   useEffect(() => {
     // Subscribe to Local SSE Server for cross-device/OBS syncing
@@ -123,39 +259,106 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const saveGlobalSettings = () => {
-    localStorage.setItem('webProjectorSettings', JSON.stringify(liveState));
-    import("react-hot-toast").then((module) => module.toast.success("Global styles saved successfully!"));
+  const updateBibleSettings = (settings: Partial<BibleSettings>) => {
+    setBibleSettings((prev) => {
+      const updated = { ...prev, ...settings };
+      localStorage.setItem('webProjectorBibleSettings', JSON.stringify(updated));
+      return updated;
+    });
+
+    setLiveState((prev) => {
+      if (prev.type === 'bible') {
+        const next = { ...prev, ...settings, enableKineticTypography: false };
+        updateLiveState(next);
+        return next;
+      }
+      return prev;
+    });
   };
 
-  const projectLive = (newState: Partial<LiveState>, forceGlobalStyle: boolean = false, isSongInjection: boolean = false) => {
-    let baseState = liveState;
-    if (forceGlobalStyle || ((newState.type === 'bible' || newState.type === 'clear') && liveState.type === 'song')) {
-      baseState = { ...baseState, ...getInitialState() };
-    }
-    const updatedState = { ...baseState, ...newState };
-    setLiveState(updatedState);
-    updateLiveState(updatedState);
+  const updateDefaultSongSettings = (settings: Partial<SongSettings>) => {
+    setDefaultSongSettingsState((prev) => {
+      const updated = { ...prev, ...settings };
+      localStorage.setItem('webProjectorDefaultSongSettings', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
-    if (newState.type !== 'bible' && newState.type !== 'song' && newState.type !== 'clear' && !isSongInjection) {
-      const saved = getInitialState();
-      const nextGlobal = { ...saved, ...newState };
-      localStorage.setItem('webProjectorSettings', JSON.stringify(nextGlobal));
-    }
+  const updateGlobalSettings = (settings: Partial<GlobalDisplaySettings>) => {
+    setGlobalSettings((prev) => {
+      const updated = { ...prev, ...settings };
+      localStorage.setItem('webProjectorGlobalSettings', JSON.stringify(updated));
+      return updated;
+    });
+
+    setLiveState((prev) => {
+      const next = { ...prev, ...settings };
+      updateLiveState(next);
+      return next;
+    });
+  };
+
+  const projectBible = (title: string, text: string) => {
+    const nextLive = buildLiveState('bible', { title, text }, globalSettings, bibleSettings, defaultSongSettingsState);
+    setLiveState(nextLive);
+    updateLiveState(nextLive);
+  };
+
+  const projectSong = (title: string, text: string, songSettings?: Partial<SongSettings>) => {
+    const effectiveSongSettings = { ...defaultSongSettingsState, ...(songSettings || {}) };
+    const nextLive = buildLiveState('song', { title, text }, globalSettings, bibleSettings, effectiveSongSettings);
+    setLiveState(nextLive);
+    updateLiveState(nextLive);
+  };
+
+  const projectLive = (newState: Partial<LiveState>) => {
+    setLiveState((prev) => {
+      const updated = { ...prev, ...newState };
+      updateLiveState(updated);
+      return updated;
+    });
   };
 
   const clearLive = () => {
-    let baseState = liveState;
-    if (liveState.type === 'song') {
-      baseState = { ...baseState, ...getInitialState() };
-    }
-    const updatedState = { ...baseState, type: 'clear' as const };
-    setLiveState(updatedState);
-    updateLiveState(updatedState);
+    setLiveState((prev) => {
+      const updated: LiveState = {
+        ...prev,
+        type: 'clear',
+        title: '',
+        text: '',
+        enableKineticTypography: false,
+      };
+      updateLiveState(updated);
+      return updated;
+    });
+  };
+
+  const saveGlobalSettings = () => {
+    localStorage.setItem('webProjectorBibleSettings', JSON.stringify(bibleSettings));
+    localStorage.setItem('webProjectorDefaultSongSettings', JSON.stringify(defaultSongSettingsState));
+    localStorage.setItem('webProjectorGlobalSettings', JSON.stringify(globalSettings));
+    localStorage.setItem('webProjectorSettings', JSON.stringify(liveState));
+    import('react-hot-toast').then((module) => module.toast.success('Settings saved successfully!'));
   };
 
   return (
-    <LiveContext.Provider value={{ liveState, setLiveState, projectLive, clearLive, saveGlobalSettings }}>
+    <LiveContext.Provider
+      value={{
+        liveState,
+        setLiveState,
+        bibleSettings,
+        updateBibleSettings,
+        defaultSongSettings: defaultSongSettingsState,
+        updateDefaultSongSettings,
+        globalSettings,
+        updateGlobalSettings,
+        projectBible,
+        projectSong,
+        projectLive,
+        clearLive,
+        saveGlobalSettings,
+      }}
+    >
       {children}
     </LiveContext.Provider>
   );
