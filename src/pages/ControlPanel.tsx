@@ -21,6 +21,7 @@ import {
   Check,
   Trash2,
   Eye,
+  History,
 } from "lucide-react";
 import "../styles/panel.css";
 import { bibleService, BibleVersion, Verse } from "../services/bibleService";
@@ -34,6 +35,148 @@ import {
   updateSong,
   deleteAllSongs,
 } from "../services/dbService";
+
+export interface BibleHistoryItem {
+  id: string;
+  reference: string;
+  text: string;
+  bookNumber: number;
+  chapterNumber: number;
+  verseNumber: number;
+  bibleId: string;
+  bibleName: string;
+  timestamp: number;
+}
+
+const BOOK_ALIASES: Record<string, string> = {
+  gen: "Genesis",
+  ge: "Genesis",
+  ex: "Exodus",
+  exo: "Exodus",
+  lev: "Leviticus",
+  le: "Leviticus",
+  num: "Numbers",
+  nu: "Numbers",
+  deut: "Deuteronomy",
+  dt: "Deuteronomy",
+  josh: "Joshua",
+  jos: "Joshua",
+  judg: "Judges",
+  jdg: "Judges",
+  ruth: "Ruth",
+  ru: "Ruth",
+  "1sam": "1 Samuel",
+  "2sam": "2 Samuel",
+  "1ki": "1 Kings",
+  "2ki": "2 Kings",
+  "1kin": "1 Kings",
+  "2kin": "2 Kings",
+  "1chr": "1 Chronicles",
+  "2chr": "2 Chronicles",
+  ezr: "Ezra",
+  neh: "Nehemiah",
+  ne: "Nehemiah",
+  est: "Esther",
+  es: "Esther",
+  job: "Job",
+  jb: "Job",
+  ps: "Psalms",
+  psa: "Psalms",
+  psalm: "Psalms",
+  prov: "Proverbs",
+  pro: "Proverbs",
+  pr: "Proverbs",
+  prv: "Proverbs",
+  eccl: "Ecclesiastes",
+  ecc: "Ecclesiastes",
+  ec: "Ecclesiastes",
+  song: "Song of Solomon",
+  sos: "Song of Solomon",
+  songs: "Song of Solomon",
+  isa: "Isaiah",
+  is: "Isaiah",
+  jer: "Jeremiah",
+  je: "Jeremiah",
+  lam: "Lamentations",
+  la: "Lamentations",
+  ezek: "Ezekiel",
+  eze: "Ezekiel",
+  dan: "Daniel",
+  da: "Daniel",
+  hos: "Hosea",
+  ho: "Hosea",
+  joel: "Joel",
+  joe: "Joel",
+  amos: "Amos",
+  am: "Amos",
+  obad: "Obadiah",
+  ob: "Obadiah",
+  jon: "Jonah",
+  jnh: "Jonah",
+  mic: "Micah",
+  mc: "Micah",
+  nah: "Nahum",
+  na: "Nahum",
+  hab: "Habakkuk",
+  zeph: "Zephaniah",
+  zep: "Zephaniah",
+  hag: "Haggai",
+  zech: "Zechariah",
+  zec: "Zechariah",
+  mal: "Malachi",
+  ml: "Malachi",
+  mat: "Matthew",
+  matt: "Matthew",
+  mt: "Matthew",
+  mk: "Mark",
+  mrk: "Mark",
+  lk: "Luke",
+  luk: "Luke",
+  lu: "Luke",
+  jn: "John",
+  jhn: "John",
+  joh: "John",
+  act: "Acts",
+  ac: "Acts",
+  rom: "Romans",
+  ro: "Romans",
+  rm: "Romans",
+  "1cor": "1 Corinthians",
+  "2cor": "2 Corinthians",
+  gal: "Galatians",
+  ga: "Galatians",
+  eph: "Ephesians",
+  phil: "Philippians",
+  php: "Philippians",
+  col: "Colossians",
+  "1thess": "1 Thessalonians",
+  "2thess": "2 Thessalonians",
+  "1th": "1 Thessalonians",
+  "2th": "2 Thessalonians",
+  "1tim": "1 Timothy",
+  "2tim": "2 Timothy",
+  tit: "Titus",
+  ti: "Titus",
+  philem: "Philemon",
+  phm: "Philemon",
+  heb: "Hebrews",
+  jas: "James",
+  jam: "James",
+  jm: "James",
+  "1pet": "1 Peter",
+  "2pet": "2 Peter",
+  "1pe": "1 Peter",
+  "2pe": "2 Peter",
+  "1pt": "1 Peter",
+  "2pt": "2 Peter",
+  "1jn": "1 John",
+  "2jn": "2 John",
+  "3jn": "3 John",
+  jud: "Jude",
+  jd: "Jude",
+  rev: "Revelation",
+  re: "Revelation",
+};
 
 export default function ControlPanel() {
   const [savedSongs, setSavedSongs] = useState<any[]>([]);
@@ -85,6 +228,86 @@ export default function ControlPanel() {
   const [selectedBookNum, setSelectedBookNum] = useState<number | "">("");
   const [selectedChapterNum, setSelectedChapterNum] = useState<number | "">("");
   const [fastSearchQuery, setFastSearchQuery] = useState("");
+  const [bibleHistory, setBibleHistory] = useState<BibleHistoryItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("webProjectorBibleHistory");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.slice(0, 8);
+      }
+    } catch (e) {
+      console.error("Error loading bible history:", e);
+    }
+    return [];
+  });
+
+  const addToBibleHistory = (newItem: BibleHistoryItem) => {
+    setBibleHistory((prev) => {
+      const filtered = prev.filter(
+        (item) =>
+          item.reference.toLowerCase() !== newItem.reference.toLowerCase(),
+      );
+      const updated = [newItem, ...filtered].slice(0, 8);
+      try {
+        localStorage.setItem(
+          "webProjectorBibleHistory",
+          JSON.stringify(updated),
+        );
+      } catch (e) {
+        console.error("Failed to save bible history to localStorage", e);
+      }
+      return updated;
+    });
+  };
+
+  const handleSelectHistoryItem = (item: BibleHistoryItem) => {
+    if (item.bibleId && item.bibleId !== selectedBibleId) {
+      setSelectedBibleId(item.bibleId);
+    }
+    setSelectedBookNum(item.bookNumber);
+    setSelectedChapterNum(item.chapterNumber);
+    setActiveProjectedRef({
+      book: item.bookNumber,
+      chap: item.chapterNumber,
+      verse: item.verseNumber,
+    });
+    setActiveSongChunkIndex(null);
+    projectBible(item.reference, item.text);
+
+    // Bump to top of history
+    setBibleHistory((prev) => {
+      const filtered = prev.filter(
+        (h) =>
+          h.id !== item.id &&
+          h.reference.toLowerCase() !== item.reference.toLowerCase(),
+      );
+      const updated = [
+        { ...item, timestamp: Date.now() },
+        ...filtered,
+      ].slice(0, 8);
+      try {
+        localStorage.setItem(
+          "webProjectorBibleHistory",
+          JSON.stringify(updated),
+        );
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  const handleRemoveHistoryItem = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setBibleHistory((prev) => {
+      const updated = prev.filter((item) => item.id !== id);
+      try {
+        localStorage.setItem(
+          "webProjectorBibleHistory",
+          JSON.stringify(updated),
+        );
+      } catch (e) {}
+      return updated;
+    });
+  };
 
   const [activeProjectedRef, setActiveProjectedRef] = useState<{
     book: number;
@@ -800,25 +1023,71 @@ export default function ControlPanel() {
 
   const handleFastSearch = (query: string, shouldProject: boolean = false) => {
     setFastSearchQuery(query);
-    if (!activeBible || query.length < 3) return;
+    if (!activeBible && bibles.length === 0) return;
+    if (query.trim().length < 2) return;
 
-    const parts = query.toLowerCase().trim().split(/\s+|:/);
-    if (parts.length >= 2) {
-      let bookQuery = parts[0];
-      let chapterStr = parts[1];
-      let verseStr = parts[2];
+    let cleanQuery = query.trim();
+    let requestedVersion: string | null = null;
 
-      if (!isNaN(Number(parts[0])) && parts.length >= 3) {
-        bookQuery = `${parts[0]} ${parts[1]}`;
-        chapterStr = parts[2];
-        verseStr = parts[3];
+    // Check for version in parentheses: e.g. "mat 3:3 (niv)" or "mat 3:3(kjv)"
+    const parenMatch = cleanQuery.match(/\(([^)]+)\)/);
+    if (parenMatch) {
+      requestedVersion = parenMatch[1].trim();
+      cleanQuery = cleanQuery.replace(/\([^)]+\)/g, " ").trim();
+    }
+
+    const rawParts = cleanQuery.split(/[\s:]+/).filter(Boolean);
+    if (rawParts.length >= 2) {
+      let bookQuery = rawParts[0];
+      let chapterStr = rawParts[1];
+      let verseStr = rawParts[2];
+
+      if (!isNaN(Number(rawParts[0])) && rawParts.length >= 3) {
+        bookQuery = `${rawParts[0]} ${rawParts[1]}`;
+        chapterStr = rawParts[2];
+        verseStr = rawParts[3];
+        if (!requestedVersion && rawParts.length >= 5) {
+          requestedVersion = rawParts.slice(4).join(" ");
+        }
+      } else {
+        if (!requestedVersion && rawParts.length >= 4) {
+          requestedVersion = rawParts.slice(3).join(" ");
+        }
       }
 
-      const matchedBook = activeBible.books.find(
-        (b) =>
-          b.name.toLowerCase().startsWith(bookQuery) ||
-          b.name.toLowerCase().includes(bookQuery),
-      );
+      // Resolve targeted Bible version
+      let targetBible = activeBible || bibles[0];
+      if (requestedVersion && bibles.length > 0) {
+        const reqVerLower = requestedVersion.toLowerCase();
+        const matchedVer = bibles.find(
+          (b) =>
+            b.id.toLowerCase() === reqVerLower ||
+            b.name.toLowerCase() === reqVerLower ||
+            b.name.toLowerCase().includes(reqVerLower) ||
+            b.id.toLowerCase().includes(reqVerLower),
+        );
+        if (matchedVer) {
+          targetBible = matchedVer;
+          if (selectedBibleId !== matchedVer.id) {
+            setSelectedBibleId(matchedVer.id);
+          }
+        }
+      }
+
+      if (!targetBible) return;
+
+      const cleanBookQuery = bookQuery.toLowerCase().replace(/\s+/g, "");
+      const aliasedName =
+        BOOK_ALIASES[cleanBookQuery] || BOOK_ALIASES[bookQuery.toLowerCase()];
+
+      const matchedBook = targetBible.books.find((b) => {
+        const bLower = b.name.toLowerCase();
+        if (aliasedName && bLower === aliasedName.toLowerCase()) return true;
+        if (bLower.startsWith(bookQuery.toLowerCase())) return true;
+        if (bLower.includes(bookQuery.toLowerCase())) return true;
+        if (bLower.replace(/\s+/g, "").startsWith(cleanBookQuery)) return true;
+        return false;
+      });
 
       if (matchedBook) {
         if (selectedBookNum !== matchedBook.number) {
@@ -831,26 +1100,40 @@ export default function ControlPanel() {
             setSelectedChapterNum(chapNum);
           }
 
-          const verseNum = parseInt(verseStr);
-          if (!isNaN(verseNum)) {
-            const matchedChapter = matchedBook.chapters.find(
-              (c) => c.number === chapNum,
-            );
-            const matchedVerse = matchedChapter?.verses.find(
-              (v) => v.number === verseNum,
-            );
-            if (matchedVerse) {
-              setActiveProjectedRef({
-                book: matchedBook.number,
-                chap: chapNum,
-                verse: verseNum,
-              });
-              if (shouldProject) {
-                setActiveSongChunkIndex(null);
-                projectBible(
-                  `${matchedBook.name} ${chapNum}:${verseNum} (${activeBible.name})`,
-                  matchedVerse.text,
-                );
+          if (verseStr) {
+            const verseNum = parseInt(verseStr);
+            if (!isNaN(verseNum)) {
+              const matchedChapter = matchedBook.chapters.find(
+                (c) => c.number === chapNum,
+              );
+              const matchedVerse = matchedChapter?.verses.find(
+                (v) => v.number === verseNum,
+              );
+              if (matchedVerse) {
+                setActiveProjectedRef({
+                  book: matchedBook.number,
+                  chap: chapNum,
+                  verse: verseNum,
+                });
+
+                if (shouldProject) {
+                  setActiveSongChunkIndex(null);
+                  const refString = `${matchedBook.name} ${chapNum}:${verseNum} (${targetBible.name})`;
+                  projectBible(refString, matchedVerse.text);
+
+                  // Add to history (only when hit enter & sent to program)
+                  addToBibleHistory({
+                    id: `${matchedBook.number}_${chapNum}_${verseNum}_${targetBible.id}_${Date.now()}`,
+                    reference: refString,
+                    text: matchedVerse.text,
+                    bookNumber: matchedBook.number,
+                    chapterNumber: chapNum,
+                    verseNumber: verseNum,
+                    bibleId: targetBible.id,
+                    bibleName: targetBible.name,
+                    timestamp: Date.now(),
+                  });
+                }
               }
             }
           }
@@ -3965,15 +4248,27 @@ export default function ControlPanel() {
                 }}
               >
                 <div className="fast-search-container">
-                  <Search
-                    size={20}
-                    color="var(--primary)"
-                    style={{ marginRight: "12px" }}
-                  />
+                  <button
+                    type="button"
+                    onClick={() => handleFastSearch(fastSearchQuery, true)}
+                    title="Search and Project Live (Enter)"
+                    aria-label="Search and Project Live"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      cursor: "pointer",
+                      marginRight: "12px",
+                    }}
+                  >
+                    <Search size={20} color="var(--primary)" />
+                  </button>
                   <input
                     type="text"
                     className="fast-search-input"
-                    placeholder="Fast Search (e.g. 'gen 1 2' or 'john 3 16')"
+                    placeholder="Fast Search (e.g. 'mat 3:3 (niv)' or 'gen 1 1') — Enter to Project"
                     value={fastSearchQuery}
                     onChange={(e) => handleFastSearch(e.target.value, false)}
                     onKeyDown={(e) => {
@@ -4815,6 +5110,127 @@ export default function ControlPanel() {
               }}
             >
               <OutputView isPreview={true} />
+            </div>
+          </div>
+
+          {/* Scripture Search History Box */}
+          <div className="program-history-container">
+            <div className="program-history-header">
+              <div className="program-history-title">
+                <History size={13} style={{ color: "var(--primary)" }} />
+                <span>Scripture History</span>
+                <span className="program-history-badge">
+                  {bibleHistory.length}/8
+                </span>
+              </div>
+              {bibleHistory.length > 0 && (
+                <button
+                  className="program-history-clear-btn"
+                  onClick={() => {
+                    setBibleHistory([]);
+                    try {
+                      localStorage.removeItem("webProjectorBibleHistory");
+                    } catch (e) {}
+                    toast.success("Scripture history cleared");
+                  }}
+                  title="Clear history"
+                >
+                  <Trash2 size={11} /> Clear
+                </button>
+              )}
+            </div>
+
+            <div className="program-history-list">
+              {bibleHistory.length === 0 ? (
+                <div className="program-history-empty">
+                  <BookOpen
+                    size={22}
+                    style={{ opacity: 0.35, color: "var(--text-muted)" }}
+                  />
+                  <span
+                    style={{
+                      fontSize: "0.78rem",
+                      fontWeight: 600,
+                      color: "var(--text-muted)",
+                    }}
+                  >
+                    No Scripture History
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "var(--text-muted)",
+                      opacity: 0.8,
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    Searched verses sent with Enter will show here (last 8)
+                  </span>
+                </div>
+              ) : (
+                bibleHistory.map((item, idx) => {
+                  const isCurrentLive =
+                    liveState.type === "bible" &&
+                    liveState.title?.toLowerCase().trim() ===
+                      item.reference.toLowerCase().trim();
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`program-history-item ${isCurrentLive ? "is-live" : ""}`}
+                      onClick={() => handleSelectHistoryItem(item)}
+                      title={`Click to project ${item.reference}`}
+                    >
+                      <div className="program-history-item-top">
+                        <div className="program-history-ref">
+                          <span className="program-history-index">
+                            #{idx + 1}
+                          </span>
+                          <span>{item.reference}</span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          {isCurrentLive && (
+                            <span className="program-history-live-pill">
+                              <span className="program-history-live-dot" />
+                              LIVE
+                            </span>
+                          )}
+                          <div className="program-history-item-actions">
+                            {!isCurrentLive && (
+                              <button
+                                className="program-history-action-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectHistoryItem(item);
+                                }}
+                                title="Project live"
+                              >
+                                <Play size={10} />
+                              </button>
+                            )}
+                            <button
+                              className="program-history-action-btn delete-btn"
+                              onClick={(e) =>
+                                handleRemoveHistoryItem(e, item.id)
+                              }
+                              title="Remove from history"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <p className="program-history-snippet">{item.text}</p>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
