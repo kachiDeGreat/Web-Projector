@@ -44,8 +44,8 @@
     "win": {
       "icon": "build/icon.ico",
       "target": [
-        "zip",
-        "dir"
+        "dir",
+        "zip"
       ]
     },
     "linux": {
