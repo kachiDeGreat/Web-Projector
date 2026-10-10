@@ -3,11 +3,59 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "electron:start": "electron electron/main.cjs",
+    "electron:dev": "vite build && electron electron/main.cjs",
+    "build:exe": "vite build && electron-builder --win",
+    "build:linux": "vite build && electron-builder --linux",
+    "build:all": "vite build && electron-builder -wl"
+  },
+  "build": {
+    "appId": "com.webprojector.app",
+    "productName": "Web Projector",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "public/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "BIBLE",
+        "to": "BIBLE"
+      },
+      {
+        "from": "songs",
+        "to": "songs"
+      },
+      {
+        "from": "public/backgrounds",
+        "to": "public/backgrounds"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "zip",
+        "dir"
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        "dir",
+        "AppImage"
+      ],
+      "category": "AudioVideo"
+    }
   },
   "dependencies": {
     "firebase": "^12.17.1",
@@ -25,6 +73,8 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.4",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
     "formidable": "^3.5.4",
     "oxlint": "^1.75.0",
     "typescript": "^7.0.2",

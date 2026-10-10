@@ -4,6 +4,8 @@
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "target": "ES2022",
+    "downlevelIteration": true,
     "allowSyntheticDefaultImports": true,
     "strict": true
   },

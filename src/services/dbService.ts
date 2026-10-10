@@ -4,16 +4,67 @@ import { getDB } from './bibleService';
 const SONG_STORE = 'songs';
 const MEDIA_STORE = 'media';
 
-// Local IndexedDB: For storing songs
-export const getSongs = async () => {
+// In-memory songs cache for ultra-fast 0ms access even with 1000+ songs
+let memorySongsCache: any[] | null = null;
+
+export const getCachedSongsFast = (): any[] | null => {
+  return memorySongsCache;
+};
+
+// Local IndexedDB + songs/ filesystem sync with ultra-fast caching
+export const getSongs = async (forceRefresh = false): Promise<any[]> => {
+  // If memory cache is available and force refresh is not requested, return immediately
+  if (!forceRefresh && memorySongsCache && memorySongsCache.length > 0) {
+    // Refresh in background without blocking caller
+    fetch('/api/songs/list')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((apiSongs) => {
+        if (Array.isArray(apiSongs) && apiSongs.length > 0) {
+          memorySongsCache = apiSongs;
+        }
+      })
+      .catch(() => {});
+    return memorySongsCache;
+  }
+
+  let apiSongs: any[] | null = null;
+  try {
+    const res = await fetch('/api/songs/list');
+    if (res.ok) {
+      apiSongs = await res.json();
+    }
+  } catch (e) {
+    console.warn("Could not fetch songs from /api/songs/list, falling back to IndexedDB", e);
+  }
+
   const db = await getDB();
-  return new Promise<any[]>((resolve, reject) => {
+  const dbSongs = await new Promise<any[]>((resolve, reject) => {
     const tx = db.transaction(SONG_STORE, 'readonly');
     const store = tx.objectStore(SONG_STORE);
     const request = store.getAll();
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => resolve(request.result || []);
     request.onerror = () => reject(request.error);
   });
+
+  if (Array.isArray(apiSongs)) {
+    memorySongsCache = apiSongs;
+
+    // Asynchronously update IndexedDB in background so UI isn't blocked
+    setTimeout(() => {
+      try {
+        const tx = db.transaction(SONG_STORE, 'readwrite');
+        const store = tx.objectStore(SONG_STORE);
+        for (const song of apiSongs) {
+          store.put(song);
+        }
+      } catch (e) {}
+    }, 0);
+
+    return apiSongs;
+  }
+
+  memorySongsCache = dbSongs;
+  return dbSongs;
 };
 
 export const saveMedia = async (file: File): Promise<string> => {
@@ -45,19 +96,93 @@ export const getMedia = async (id: string): Promise<File | null> => {
   });
 };
 
-export const addSong = async (title: string, artist: string, lyrics: string, settings?: any, customId?: string) => {
+export const addSong = async (
+  title: string,
+  artist: string,
+  lyrics: string,
+  settings?: any,
+  customId?: string,
+) => {
+  let fileSavedId: string | null = null;
+  let filename: string | null = null;
+  try {
+    const res = await fetch('/api/songs/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, artist, lyrics, settings }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.id) fileSavedId = data.id;
+      if (data.filename) filename = data.filename;
+    }
+  } catch (e) {
+    console.warn("Could not save song to /api/songs/save", e);
+  }
+
   const db = await getDB();
   return new Promise<string>((resolve, reject) => {
     const tx = db.transaction(SONG_STORE, 'readwrite');
     const store = tx.objectStore(SONG_STORE);
-    const id = customId || "song_" + Date.now();
-    const request = store.put({ id, title, artist, lyrics, settings, createdAt: Date.now() });
+    const id = customId || fileSavedId || "song_" + Date.now();
+    const newSong = {
+      id,
+      title,
+      artist,
+      lyrics,
+      settings,
+      filename,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    if (memorySongsCache) {
+      memorySongsCache = [newSong, ...memorySongsCache.filter((s) => s.id !== id)];
+    }
+    const request = store.put(newSong);
     request.onsuccess = () => resolve(id);
     request.onerror = () => reject(request.error);
   });
 };
 
-export const updateSong = async (id: string, title: string, artist: string, lyrics: string, settings?: any) => {
+export const updateSong = async (
+  id: string,
+  title: string,
+  artist: string,
+  lyrics: string,
+  settings?: any,
+  originalFilename?: string,
+) => {
+  let updatedFilename: string | undefined = undefined;
+  try {
+    const res = await fetch('/api/songs/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, title, artist, lyrics, settings, originalFilename }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.filename) updatedFilename = data.filename;
+    }
+  } catch (e) {
+    console.warn("Could not update song on /api/songs/save", e);
+  }
+
+  if (memorySongsCache) {
+    memorySongsCache = memorySongsCache.map((s) =>
+      s.id === id
+        ? {
+            ...s,
+            title,
+            artist,
+            lyrics,
+            settings,
+            filename: updatedFilename || s.filename,
+            updatedAt: Date.now(),
+          }
+        : s,
+    );
+  }
+
   const db = await getDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(SONG_STORE, 'readwrite');
@@ -65,7 +190,16 @@ export const updateSong = async (id: string, title: string, artist: string, lyri
     const getReq = store.get(id);
     getReq.onsuccess = () => {
       const existing = getReq.result || {};
-      const request = store.put({ ...existing, id, title, artist, lyrics, settings, updatedAt: Date.now() });
+      const request = store.put({
+        ...existing,
+        id,
+        title,
+        artist,
+        lyrics,
+        settings,
+        filename: updatedFilename || existing.filename,
+        updatedAt: Date.now(),
+      });
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     };
@@ -73,7 +207,20 @@ export const updateSong = async (id: string, title: string, artist: string, lyri
   });
 };
 
-export const deleteSong = async (id: string) => {
+export const deleteSong = async (id: string, filename?: string, title?: string) => {
+  if (memorySongsCache) {
+    memorySongsCache = memorySongsCache.filter((s) => s.id !== id);
+  }
+  try {
+    await fetch('/api/songs/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, filename, title }),
+    });
+  } catch (e) {
+    console.warn("Could not delete song from /api/songs/delete", e);
+  }
+
   const db = await getDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(SONG_STORE, 'readwrite');
@@ -85,6 +232,16 @@ export const deleteSong = async (id: string) => {
 };
 
 export const deleteAllSongs = async () => {
+  memorySongsCache = [];
+  try {
+    await fetch('/api/songs/delete-all', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (e) {
+    console.warn("Could not delete all songs from /api/songs/delete-all", e);
+  }
+
   const db = await getDB();
   return new Promise<void>((resolve, reject) => {
     const tx = db.transaction(SONG_STORE, 'readwrite');

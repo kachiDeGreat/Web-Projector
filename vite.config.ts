@@ -10,7 +10,7 @@ let sseClients: any[] = [];
 let currentLiveState: any = null;
 
 
-setInterval(() => {
+const pingInterval = setInterval(() => {
   sseClients.forEach(client => {
     client.write('event: ping\ndata: {}\n\n');
     if (client.flush) {
@@ -18,6 +18,7 @@ setInterval(() => {
     }
   });
 }, 5000);
+pingInterval.unref();
 
 function localMediaServer() {
   return {
@@ -152,14 +153,14 @@ function localMediaServer() {
         if (req.method === 'GET') {
           const bibleDir = path.resolve(process.cwd(), 'BIBLE');
           if (fs.existsSync(bibleDir)) {
-            const files = fs.readdirSync(bibleDir).filter(f => f.endsWith('.xml'));
+            const files = fs.readdirSync(bibleDir).filter(f => f.toLowerCase().endsWith('.xml'));
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify(files));
           } else {
-            res.statusCode = 404;
+            res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ error: 'BIBLE directory not found' }));
+            res.end(JSON.stringify([]));
           }
         }
       });
@@ -175,7 +176,7 @@ function localMediaServer() {
           const queryParams = new URLSearchParams(urlParts[1]);
           const fileName = queryParams.get('name');
           
-          if (!fileName || !fileName.endsWith('.xml')) {
+          if (!fileName || !fileName.toLowerCase().endsWith('.xml')) {
             res.statusCode = 400;
             res.end('Invalid file name');
             return;
@@ -184,7 +185,7 @@ function localMediaServer() {
           const filePath = path.resolve(process.cwd(), 'BIBLE', fileName);
           if (fs.existsSync(filePath)) {
             res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/xml');
+            res.setHeader('Content-Type', 'application/xml; charset=utf-8');
             const stream = fs.createReadStream(filePath);
             stream.pipe(res);
           } else {
@@ -192,6 +193,270 @@ function localMediaServer() {
             res.end('File not found');
           }
         }
+      });
+
+      // Save Bible XML to BIBLE/ directory
+      server.middlewares.use('/api/bibles/save', (req, res, next) => {
+        if (req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const { filename, content } = JSON.parse(body);
+              if (!filename || !content) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'Filename and content are required' }));
+                return;
+              }
+              const bibleDir = path.resolve(process.cwd(), 'BIBLE');
+              if (!fs.existsSync(bibleDir)) {
+                fs.mkdirSync(bibleDir, { recursive: true });
+              }
+              let safeName = path.basename(filename);
+              if (!safeName.toLowerCase().endsWith('.xml')) {
+                safeName += '.xml';
+              }
+              safeName = safeName.replace(/[<>:"/\\|?*]/g, '_');
+              const targetPath = path.join(bibleDir, safeName);
+              fs.writeFileSync(targetPath, content, 'utf8');
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, filename: safeName }));
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: e.message }));
+            }
+          });
+          return;
+        }
+        next();
+      });
+
+      // Delete Bible XML from BIBLE/ directory
+      server.middlewares.use('/api/bibles/delete', (req, res, next) => {
+        if (req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const { filename } = JSON.parse(body);
+              if (filename) {
+                const bibleDir = path.resolve(process.cwd(), 'BIBLE');
+                const safeName = path.basename(filename);
+                const targetPath = path.join(bibleDir, safeName);
+                if (fs.existsSync(targetPath)) {
+                  fs.unlinkSync(targetPath);
+                }
+              }
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true }));
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: e.message }));
+            }
+          });
+          return;
+        }
+        next();
+      });
+
+      // Local Songs Directory Endpoints & Cache
+      const songsDir = path.resolve(process.cwd(), 'songs');
+      if (!fs.existsSync(songsDir)) {
+        fs.mkdirSync(songsDir, { recursive: true });
+      }
+
+      const songCache = new Map<string, { mtimeMs: number; data: any }>();
+
+      const parseSongTxt = (content: string, filename: string) => {
+        const lines = content.split(/\r?\n/);
+        let title = path.basename(filename, path.extname(filename));
+        let artist = '';
+        let lyricsStart = 0;
+        let hasHeader = false;
+
+        for (let i = 0; i < Math.min(lines.length, 12); i++) {
+          const line = lines[i].trim();
+          if (line.toLowerCase().startsWith('title:')) {
+            title = line.substring(6).trim();
+            hasHeader = true;
+          } else if (line.toLowerCase().startsWith('artist:')) {
+            artist = line.substring(7).trim();
+            hasHeader = true;
+          } else if (line === '---' || line === '===') {
+            lyricsStart = i + 1;
+            hasHeader = true;
+            break;
+          }
+        }
+
+        const lyrics = hasHeader
+          ? lines.slice(lyricsStart).join('\n').trim()
+          : content.trim();
+
+        return {
+          id: 'song_' + Buffer.from(filename).toString('hex'),
+          title: title || path.basename(filename, path.extname(filename)),
+          artist: artist || '',
+          lyrics: lyrics,
+          filename: filename
+        };
+      };
+
+      const serializeSongTxt = (title: string, artist: string, lyrics: string) => {
+        return `Title: ${title.trim()}\nArtist: ${(artist || '').trim()}\n---\n${(lyrics || '').trim()}\n`;
+      };
+
+      const getCachedSongsList = () => {
+        if (!fs.existsSync(songsDir)) {
+          fs.mkdirSync(songsDir, { recursive: true });
+        }
+        const files = fs.readdirSync(songsDir).filter(f => f.toLowerCase().endsWith('.txt'));
+        const currentFiles = new Set(files);
+        songCache.forEach((_, cachedFile) => {
+          if (!currentFiles.has(cachedFile)) {
+            songCache.delete(cachedFile);
+          }
+        });
+        return files.map(file => {
+          const fullPath = path.join(songsDir, file);
+          try {
+            const stat = fs.statSync(fullPath);
+            const cached = songCache.get(file);
+            if (cached && cached.mtimeMs === stat.mtimeMs) {
+              return cached.data;
+            }
+            const content = fs.readFileSync(fullPath, 'utf8');
+            const parsed = parseSongTxt(content, file);
+            const item = {
+              ...parsed,
+              updatedAt: stat.mtimeMs,
+              createdAt: stat.birthtimeMs || stat.mtimeMs
+            };
+            songCache.set(file, { mtimeMs: stat.mtimeMs, data: item });
+            return item;
+          } catch (e) {
+            return null;
+          }
+        }).filter(Boolean);
+      };
+
+      server.middlewares.use('/api/songs/list', (req, res) => {
+        if (req.method === 'GET') {
+          try {
+            const songs = getCachedSongsList();
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify(songs));
+          } catch (e: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        }
+      });
+
+      server.middlewares.use('/api/songs/save', (req, res, next) => {
+        if (req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const { title, artist, lyrics, originalFilename } = JSON.parse(body);
+              if (!title || !title.trim()) {
+                res.statusCode = 400;
+                res.end(JSON.stringify({ error: 'Title is required' }));
+                return;
+              }
+              const safeTitle = title.trim().replace(/[<>:"/\\|?*]/g, '_');
+              const filename = `${safeTitle}.txt`;
+              const filePath = path.join(songsDir, filename);
+
+              // If filename changed and originalFilename was provided, remove old file
+              if (originalFilename && originalFilename !== filename) {
+                const oldPath = path.join(songsDir, originalFilename);
+                if (fs.existsSync(oldPath)) {
+                  fs.unlinkSync(oldPath);
+                }
+                songCache.delete(originalFilename);
+              }
+
+              const content = serializeSongTxt(title, artist, lyrics);
+              fs.writeFileSync(filePath, content, 'utf8');
+              songCache.delete(filename);
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({
+                success: true,
+                filename,
+                id: 'song_' + Buffer.from(filename).toString('hex')
+              }));
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: e.message }));
+            }
+          });
+          return;
+        }
+        next();
+      });
+
+      server.middlewares.use('/api/songs/delete-all', (req, res, next) => {
+        if (req.method === 'POST') {
+          try {
+            if (fs.existsSync(songsDir)) {
+              const files = fs.readdirSync(songsDir).filter(f => f.toLowerCase().endsWith('.txt'));
+              files.forEach(f => {
+                fs.unlinkSync(path.join(songsDir, f));
+              });
+            }
+            songCache.clear();
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true }));
+          } catch (e: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: e.message }));
+          }
+          return;
+        }
+        next();
+      });
+
+      server.middlewares.use('/api/songs/delete', (req, res, next) => {
+        if (req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const { filename, title } = JSON.parse(body);
+              const targetName = filename || (title ? `${title.trim().replace(/[<>:"/\\|?*]/g, '_')}.txt` : null);
+              if (targetName) {
+                const filePath = path.join(songsDir, targetName);
+                if (fs.existsSync(filePath)) {
+                  fs.unlinkSync(filePath);
+                }
+                songCache.delete(targetName);
+              }
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true }));
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: e.message }));
+            }
+          });
+          return;
+        }
+        next();
       });
     },
   }

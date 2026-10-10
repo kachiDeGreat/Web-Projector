@@ -195,5 +195,34 @@ export const bibleService = {
       console.error("Failed to load bible from server", e);
     }
     return null;
+  },
+
+  async saveBibleToServer(filename: string, content: string): Promise<boolean> {
+    try {
+      const res = await fetch('/api/bibles/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename, content }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error("Failed to save bible to server disk", e);
+      return false;
+    }
+  },
+
+  async deleteBibleFromServer(filename: string): Promise<boolean> {
+    try {
+      const res = await fetch('/api/bibles/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filename }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error("Failed to delete bible from server disk", e);
+      return false;
+    }
   }
 };
+

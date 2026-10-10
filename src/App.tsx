@@ -1,9 +1,6 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import OutputView from "./pages/OutputView";
 import ControlPanel from "./pages/ControlPanel";
-import Dashboard from "./pages/Dashboard";
-import Landing from "./pages/Landing";
-
 import { Toaster } from "react-hot-toast";
 
 function App() {
@@ -27,9 +24,9 @@ function App() {
         }}
       />
       <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/panel" element={<ControlPanel />} />
+        <Route path="/" element={<ControlPanel />} />
+        <Route path="/panel" element={<Navigate to="/" replace />} />
+        <Route path="/dashboard" element={<Navigate to="/" replace />} />
         <Route path="/output" element={<OutputView />} />
       </Routes>
     </BrowserRouter>

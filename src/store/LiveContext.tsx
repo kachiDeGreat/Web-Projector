@@ -47,6 +47,7 @@ export interface GlobalDisplaySettings {
   backgroundMode: 'solid' | 'image' | 'video';
   backgroundColor: string;
   backgroundUrl: string;
+  backgroundDim?: number;
 }
 
 export interface LiveState extends GlobalDisplaySettings, BibleSettings, SongSettings {
@@ -75,7 +76,7 @@ export const defaultBibleSettings: BibleSettings = {
   refTextTransform: 'none',
   refFontWeight: 'bold',
   refColor: '#FFFFFF',
-  animation: 'fade',
+  animation: 'none',
 };
 
 export const defaultSongSettings: SongSettings = {
@@ -88,7 +89,7 @@ export const defaultSongSettings: SongSettings = {
   songTextTransform: 'none',
   enableKineticTypography: false,
   kineticTempo: 'fast',
-  animation: 'fade',
+  animation: 'none',
   animationTemplate: 'guessing-kinetic',
 };
 
@@ -101,6 +102,7 @@ export const defaultGlobalSettings: GlobalDisplaySettings = {
   backgroundMode: 'solid',
   backgroundColor: '#050505',
   backgroundUrl: '',
+  backgroundDim: 25,
 };
 
 export const buildLiveState = (
@@ -206,6 +208,7 @@ const getStoredGlobalSettings = (): GlobalDisplaySettings => {
         backgroundMode: parsed.backgroundMode || defaultGlobalSettings.backgroundMode,
         backgroundColor: parsed.backgroundColor || defaultGlobalSettings.backgroundColor,
         backgroundUrl: parsed.backgroundUrl || defaultGlobalSettings.backgroundUrl,
+        backgroundDim: parsed.backgroundDim ?? defaultGlobalSettings.backgroundDim,
       };
     }
   } catch (e) {

@@ -19,8 +19,14 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
   useEffect(() => {
     if (isPreview) return;
 
-    // Force the body to be transparent for OBS, overriding global.css
-    document.body.style.backgroundColor = isExternalWindow ? "#000000" : "transparent";
+    // Set document body background according to live settings
+    if (liveState.transparentBackground) {
+      document.body.style.backgroundColor = "transparent";
+    } else if (liveState.backgroundMode === "solid") {
+      document.body.style.backgroundColor = liveState.backgroundColor || "#000000";
+    } else {
+      document.body.style.backgroundColor = "#000000";
+    }
     document.body.style.overflow = "hidden";
 
     // Check for auto-fullscreen parameter (triggered by Window Management API)
@@ -49,7 +55,13 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
       document.body.style.backgroundColor = "";
       document.body.style.overflow = "";
     };
-  }, [isPreview, isExternalWindow]);
+  }, [
+    isPreview,
+    isExternalWindow,
+    liveState.backgroundMode,
+    liveState.backgroundColor,
+    liveState.transparentBackground,
+  ]);
 
   const handleFullscreenClick = () => {
     if (!document.fullscreenElement) {
@@ -59,43 +71,91 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
     }
   };
 
+  const dimValue =
+    typeof liveState.backgroundDim === "number" ? liveState.backgroundDim : 25;
+
   const renderBackground = () => {
     if (liveState.backgroundMode === "image" && liveState.backgroundUrl) {
       return (
-        <img
-          src={liveState.backgroundUrl}
-          alt="background"
+        <div
           style={{
             position: "absolute",
-            top: 0,
-            left: 0,
+            inset: 0,
             width: "100%",
             height: "100%",
-            objectFit: "cover",
-            zIndex: -1,
+            zIndex: 0,
+            overflow: "hidden",
+            pointerEvents: "none",
           }}
-        />
+        >
+          <img
+            key={liveState.backgroundUrl}
+            src={liveState.backgroundUrl}
+            alt="stage background"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+          {dimValue > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                backgroundColor: `rgba(0, 0, 0, ${dimValue / 100})`,
+                pointerEvents: "none",
+              }}
+            />
+          )}
+        </div>
       );
     }
     if (liveState.backgroundMode === "video" && liveState.backgroundUrl) {
       return (
-        <video
-          autoPlay
-          loop
-          muted
-          playsInline
+        <div
           style={{
             position: "absolute",
-            top: 0,
-            left: 0,
+            inset: 0,
             width: "100%",
             height: "100%",
-            objectFit: "cover",
-            zIndex: -1,
+            zIndex: 0,
+            overflow: "hidden",
+            pointerEvents: "none",
           }}
         >
-          <source src={liveState.backgroundUrl} />
-        </video>
+          <video
+            key={liveState.backgroundUrl}
+            src={liveState.backgroundUrl}
+            autoPlay
+            loop
+            muted
+            playsInline
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              display: "block",
+            }}
+          />
+          {dimValue > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                backgroundColor: `rgba(0, 0, 0, ${dimValue / 100})`,
+                pointerEvents: "none",
+              }}
+            />
+          )}
+        </div>
       );
     }
     return null;
@@ -323,19 +383,31 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
         overflow: "hidden",
         position: "relative",
         backgroundColor:
-          liveState.backgroundMode === "solid" &&
-          !liveState.transparentBackground
-            ? liveState.backgroundColor
-            : isExternalWindow
+          liveState.backgroundMode === "solid"
+            ? liveState.transparentBackground
+              ? "transparent"
+              : liveState.backgroundColor || "#050505"
+            : liveState.backgroundUrl
               ? "#000000"
-              : "transparent",
+              : liveState.backgroundColor || "#050505",
       }}
     >
       {renderBackground()}
-      <AnimatePresence mode="sync">
-        {renderProjectedContent(liveState)}
-      </AnimatePresence>
-      {!document.fullscreenElement && (
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <AnimatePresence mode="sync">
+          {renderProjectedContent(liveState)}
+        </AnimatePresence>
+      </div>
+      {!document.fullscreenElement && !isPreview && (
         <div
           style={{
             position: "absolute",
@@ -344,6 +416,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
             color: "rgba(255,255,255,0.3)",
             fontSize: "12px",
             pointerEvents: "none",
+            zIndex: 2,
           }}
         >
           {/* Click to enter fullscreen */}

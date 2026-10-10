@@ -8,9 +8,10 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-implementation_plan.md
 dist
 dist-ssr
+public
+release
 *.local
 
 # Editor directories and files
