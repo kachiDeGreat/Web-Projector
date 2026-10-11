@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <XMLBIBLE xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" biblename="ENGLISHEMP">
-		</CHAPTER>
-	</BIBLEBOOK>
-	<BIBLEBOOK bnumber="10" bname=">
+	<BIBLEBOOK bnumber="1" bname="Genesis">
 		<CHAPTER cnumber="1">
 			<VERS vnumber="1">In the beginning God (<i>Elohim</i>) created <NOTE type="x-studynote">[by forming from nothing]</NOTE> the heavens and the earth.</VERS>
 			<VERS vnumber="2">The earth was formless and void <i>or</i> a waste and emptiness, and darkness was upon the face of the deep <NOTE type="x-studynote">[primeval ocean that covered the unformed earth]</NOTE>. The Spirit of God was moving (hovering, brooding) over the face of the waters.</VERS>
@@ -26067,12 +26065,12 @@
 			<VERS vnumber="20">When evening came, Jesus was reclining <i>at the table</i> with the twelve disciples.</VERS>
 			<VERS vnumber="21">And as they were eating, He said, <font color="#FF0000">"I assure you <i>and</i> most solemnly say to you that one of you will betray Me."</font></VERS>
 			<VERS vnumber="22">Being deeply grieved <i>and</i> extremely distressed, each one of them began to say to Him, "Surely not I, Lord?"</VERS>
-			<VERS vnumber="23">Jesus answered, <font color="#FF0000">"He who has dipped his hand in the bowl with Me <NOTE type="x-studynote">[as a</font>pretense of friendship]</NOTE> <font color="#FF0000">will betray Me.</font></VERS>
+			<VERS vnumber="23">Jesus answered, <font color="#FF0000">"He who has dipped his hand in the bowl with Me </font><NOTE type="x-studynote">[as a pretense of friendship]</NOTE> <font color="#FF0000">will betray Me.</font></VERS>
 			<VERS vnumber="24"><font color="#FF0000">The Son of Man is to go <NOTE type="x-studynote">[to the cross]</NOTE>, just as it is written <NOTE type="x-studynote">[in Scripture]</NOTE> of Him; but woe (judgment is coming) to that man by whom the Son of Man is betrayed! It would have been good for that man if he had never been born."</font></VERS>
 			<VERS vnumber="25">And Judas, the betrayer, said, "Surely it is not I, Rabbi?" Jesus said to him, <font color="#FF0000">" You have said it yourself."</font></VERS>
 			<VERS vnumber="26">Now as they were eating Jesus took bread, and after blessing it, He broke it and gave it to the disciples, and said, <font color="#FF0000">"Take, eat; this is My body."</font></VERS>
 			<VERS vnumber="27">And when He had taken a cup and given thanks, He gave it to them, saying, <font color="#FF0000">"Drink from it, all of you;</font></VERS>
-			<VERS vnumber="28"><font color="#FF0000">for this is My blood of the <NOTE type="x-studynote">[new and better]</NOTE> covenant, which <NOTE type="x-studynote">[ratifies the agreement and]</NOTE> is being poured out for many <NOTE type="x-studynote">[as a</font>substitutionary atonement]</NOTE> <font color="#FF0000">for the forgiveness of sins.</font></VERS>
+			<VERS vnumber="28"><font color="#FF0000">for this is My blood of the </font><NOTE type="x-studynote">[new and better]</NOTE><font color="#FF0000"> covenant, which </font><NOTE type="x-studynote">[ratifies the agreement and]</NOTE><font color="#FF0000"> is being poured out for many </font><NOTE type="x-studynote">[as a substitutionary atonement]</NOTE> <font color="#FF0000">for the forgiveness of sins.</font></VERS>
 			<VERS vnumber="29"><font color="#FF0000">But I say to you, I will not drink of this fruit of the vine from now on until that day when I drink it new with you in My Father's kingdom."</font></VERS>
 			<VERS vnumber="30">After singing a hymn, they went out to the Mount of Olives.</VERS>
 			<VERS vnumber="31">Then Jesus said to them, <font color="#FF0000">"You will all fall away because of Me this night <NOTE type="x-studynote">[disillusioned about Me, confused, and some even ashamed of Me]</NOTE>, for it is written <NOTE type="x-studynote">[in the Scriptures]</NOTE>, '<i>I will strike the Shepherd, and the sheep of the flock will be scattered</i>.'</font></VERS>
@@ -26609,7 +26607,7 @@
 			<VERS vnumber="2">Pharisees came to Jesus to test Him <NOTE type="x-studynote">[intending to trick Him into saying something wrong]</NOTE>, and asked Him, "Is it lawful <NOTE type="x-studynote">[according to Scripture]</NOTE> for a man to divorce his wife <i>and</i> send her away?"</VERS>
 			<VERS vnumber="3">He replied to them, <font color="#FF0000">"What did Moses command you?"</font></VERS>
 			<VERS vnumber="4">They said, "Moses allowed <i>a man</i> <i>to write a certificate of divorce and to send her away</i>."</VERS>
-			<VERS vnumber="5">But Jesus said to them, <font color="#FF0000">"Because of your hardness of hearts <NOTE type="x-studynote">[your callousness and insensitivity toward your wives and the</font>provision of God]</NOTE> <font color="#FF0000">he wrote you this precept.</font></VERS>
+			<VERS vnumber="5">But Jesus said to them, <font color="#FF0000">"Because of your hardness of hearts </font><NOTE type="x-studynote">[your callousness and insensitivity toward your wives and the provision of God]</NOTE> <font color="#FF0000">he wrote you this precept.</font></VERS>
 			<VERS vnumber="6"><font color="#FF0000">But from the beginning of creation <i>God</i> <i>made them male and female</i>.</font></VERS>
 			<VERS vnumber="7"><font color="#FF0000"><i>For this reason a man shall leave his father and his mother</i> <NOTE type="x-studynote">[to establish a home with his wife]</NOTE>,</font></VERS>
 			<VERS vnumber="8"><font color="#FF0000"><i>and the two shall become one flesh</i>; so that they are no longer two, but <NOTE type="x-studynote">[are united as]</NOTE> one flesh.</font></VERS>
@@ -33613,7 +33611,6 @@
 			<VERS vnumber="19">and if anyone takes away from <i>or</i> distorts the words of the book of this prophecy, God will take away <NOTE type="x-studynote">[from that one]</NOTE> his share from the tree of life and from the holy city (new Jerusalem), which are written in this book.</VERS>
 			<VERS vnumber="20">He who testifies <i>and</i> affirms these things says, <font color="#FF0000">"Yes, I am coming quickly."</font> Amen. Come, Lord Jesus.</VERS>
 			<VERS vnumber="21">The grace of the Lord Jesus (the Christ, the Messiah) be with all <NOTE type="x-studynote">[the saints—all believers, those set apart for God]</NOTE>. Amen.</VERS>
-		</CHAPTER>
 		</CHAPTER>
 	</BIBLEBOOK>
 </XMLBIBLE>

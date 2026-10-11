@@ -273,6 +273,18 @@ export default function ControlPanel() {
 
   const [activeSongSettings, setActiveSongSettings] =
     useState<SongSettings>(defaultSongSettings);
+
+  // Keep active song styling strictly synchronized with defaultSongSettings from super_settings.json
+  useEffect(() => {
+    setActiveSongSettings((prev) => ({
+      ...defaultSongSettings,
+      enableKineticTypography: prev.enableKineticTypography,
+      kineticTempo: prev.kineticTempo,
+      animation: prev.animation,
+      animationTemplate: prev.animationTemplate,
+    }));
+  }, [defaultSongSettings]);
+
   const [previewAnimationKey, setPreviewAnimationKey] = useState(0);
 
   const [sidebarWidth, setSidebarWidth] = useState(380);
@@ -518,27 +530,64 @@ export default function ControlPanel() {
   >(null);
 
   const updateActiveSongSettings = (updates: Partial<SongSettings>) => {
+    const animKeys: (keyof SongSettings)[] = [
+      "enableKineticTypography",
+      "kineticTempo",
+      "animation",
+      "animationTemplate",
+    ];
+    const styleKeys: (keyof SongSettings)[] = [
+      "layout",
+      "verticalAlign",
+      "horizontalAlign",
+      "linesMode",
+      "songFontSize",
+      "songFontWeight",
+      "songTextTransform",
+    ];
+
+    const animUpdates: Partial<SongSettings> = {};
+    const styleUpdates: Partial<SongSettings> = {};
+
+    (Object.keys(updates) as (keyof SongSettings)[]).forEach((key) => {
+      if (animKeys.includes(key)) {
+        (animUpdates as any)[key] = updates[key];
+      }
+      if (styleKeys.includes(key)) {
+        (styleUpdates as any)[key] = updates[key];
+      }
+    });
+
+    // All song styling strictly updates defaultSongSettings so all songs follow the settings
+    if (Object.keys(styleUpdates).length > 0) {
+      updateDefaultSongSettings(styleUpdates);
+    }
+
     setActiveSongSettings((prev) => {
       const updated = { ...prev, ...updates };
 
-      if (activeSongId) {
+      // Only animation preferences are saved per song
+      if (activeSongId && Object.keys(animUpdates).length > 0) {
+        const songAnimSettings = {
+          enableKineticTypography: updated.enableKineticTypography,
+          kineticTempo: updated.kineticTempo,
+          animation: updated.animation,
+          animationTemplate: updated.animationTemplate,
+        };
         updateSong(
           activeSongId,
           activeSongTitle,
           activeSongArtist,
           lyrics,
-          updated,
+          songAnimSettings,
+          activeSongFilename,
         );
         setTimeout(() => {
           setSavedSongs((list) =>
             list.map((s) =>
-              s.id === activeSongId ? { ...s, settings: updated } : s,
+              s.id === activeSongId ? { ...s, settings: songAnimSettings } : s,
             ),
           );
-        }, 0);
-      } else {
-        setTimeout(() => {
-          updateDefaultSongSettings(updates);
         }, 0);
       }
 
@@ -957,10 +1006,10 @@ export default function ControlPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `web-projector-settings-${new Date().toISOString().split("T")[0]}.json`;
+      a.download = `super_settings.json`;
       a.click();
       URL.revokeObjectURL(url);
-      toast.success("Settings exported successfully!");
+      toast.success("Settings exported as super_settings.json!");
     } catch (e) {
       toast.error("Failed to export settings");
     }
@@ -977,7 +1026,7 @@ export default function ControlPanel() {
         let importedSongsCount = 0;
         let importedSettings = false;
 
-        // If it's a global export containing liveState or specific settings
+        // If it's a settings export or super_settings.json
         if (data.liveState) {
           projectLive(data.liveState);
           importedSettings = true;
@@ -993,6 +1042,16 @@ export default function ControlPanel() {
         if (data.globalSettings) {
           updateGlobalSettings(data.globalSettings);
           importedSettings = true;
+        }
+
+        // Immediately update super_settings.json on the server disk
+        if (importedSettings) {
+          await saveGlobalSettings({
+            bibleSettings: data.bibleSettings || bibleSettings,
+            defaultSongSettings: data.defaultSongSettings || defaultSongSettings,
+            globalSettings: data.globalSettings || globalSettings,
+            liveState: data.liveState || liveState,
+          });
         }
 
         // If it's an export containing a songs array
@@ -1029,7 +1088,7 @@ export default function ControlPanel() {
 
         if (importedSongsCount > 0 && importedSettings) {
           import("react-hot-toast").then((module) =>
-            module.toast.success("Settings and songs imported successfully!"),
+            module.toast.success("Settings and songs imported & saved to super_settings.json!"),
           );
         } else if (importedSongsCount > 0) {
           import("react-hot-toast").then((module) =>
@@ -1039,7 +1098,7 @@ export default function ControlPanel() {
           );
         } else if (importedSettings) {
           import("react-hot-toast").then((module) =>
-            module.toast.success("Settings imported successfully!"),
+            module.toast.success("Settings imported & saved to super_settings.json!"),
           );
         } else {
           import("react-hot-toast").then((module) =>
@@ -1141,11 +1200,13 @@ export default function ControlPanel() {
         const name = file.name.replace(/\.xml$/i, "");
         const id = "bible_" + name.replace(/[^a-zA-Z0-9_-]/g, "_");
 
-        // 1. Save directly into BIBLE/ folder on disk (works on web & packaged exe)
-        await bibleService.saveBibleToServer(file.name, text);
+        // 1. Parse and cache in IndexedDB (ultra-tolerant to any XML quirks)
+        const parsed = await bibleService.parseZefaniaXML(text, id, name);
 
-        // 2. Parse and cache in IndexedDB
-        await bibleService.parseZefaniaXML(text, id, name);
+        // 2. Save standardized canonical Zefania XML directly into BIBLE/ folder on disk
+        const standardXml = bibleService.convertToStandardZefaniaXML(parsed);
+        await bibleService.saveBibleToServer(file.name, standardXml);
+
         toast.success(`Successfully saved ${name} to BIBLE folder!`);
         await loadBibles();
         setSelectedBibleId(id);
@@ -1331,7 +1392,7 @@ export default function ControlPanel() {
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
     const chunks: string[] = [];
-    const mode = activeSongSettings.linesMode || 1;
+    const mode = defaultSongSettings.linesMode || 1;
     let i = 0;
     while (i < lines.length) {
       if (lines[i].includes("_1")) {
@@ -1353,7 +1414,7 @@ export default function ControlPanel() {
       }
     }
     return chunks;
-  }, [lyrics, activeSongSettings.linesMode]);
+  }, [lyrics, defaultSongSettings.linesMode]);
 
   const handleProjectSongChunk = (chunkText: string, index: number) => {
     setActiveSongChunkIndex(index);
@@ -1583,7 +1644,10 @@ export default function ControlPanel() {
     setLyrics(s.lyrics);
     const loadedSettings: SongSettings = {
       ...defaultSongSettings,
-      ...(s.settings || {}),
+      enableKineticTypography: s.settings?.enableKineticTypography ?? false,
+      kineticTempo: s.settings?.kineticTempo ?? defaultSongSettings.kineticTempo ?? "fast",
+      animation: s.settings?.animation ?? defaultSongSettings.animation ?? "none",
+      animationTemplate: s.settings?.animationTemplate ?? defaultSongSettings.animationTemplate ?? "guessing-kinetic",
     };
     setActiveSongSettings(loadedSettings);
     setSongViewMode("play");
@@ -1593,7 +1657,7 @@ export default function ControlPanel() {
       .split("\n")
       .map((l: string) => l.trim())
       .filter((l: string) => l.length > 0);
-    const linesPerSlide = loadedSettings.linesMode || 2;
+    const linesPerSlide = defaultSongSettings.linesMode || 2;
     const newChunks: string[] = [];
     for (let i = 0; i < cleanLines.length; i += linesPerSlide) {
       newChunks.push(cleanLines.slice(i, i + linesPerSlide).join("\n"));
@@ -1871,16 +1935,16 @@ export default function ControlPanel() {
   const isBibleContext = activeTab === "bible";
   const activeLayout = isBibleContext
     ? bibleSettings.layout
-    : activeSongSettings.layout;
+    : defaultSongSettings.layout;
   const activeVerticalAlign = isBibleContext
     ? bibleSettings.verticalAlign
-    : activeSongSettings.verticalAlign;
+    : defaultSongSettings.verticalAlign;
   const activeHorizontalAlign = isBibleContext
     ? bibleSettings.horizontalAlign
-    : activeSongSettings.horizontalAlign;
+    : defaultSongSettings.horizontalAlign;
   const activeLinesMode = isBibleContext
     ? bibleSettings.linesMode
-    : activeSongSettings.linesMode;
+    : defaultSongSettings.linesMode;
   const isCurrentKinetic =
     !isBibleContext && activeSongSettings.enableKineticTypography;
 
@@ -2013,7 +2077,7 @@ export default function ControlPanel() {
                   color: "#8b949e",
                 }}
               >
-                {bootStatus}
+                {bootStatus} ({bootProgress}%)
               </span>
             </div>
           </div>
@@ -2404,9 +2468,9 @@ export default function ControlPanel() {
                           step="0.1"
                           min="1"
                           max="15"
-                          value={activeSongSettings.songFontSize}
+                          value={defaultSongSettings.songFontSize}
                           onChange={(e) =>
-                            updateActiveSongSettings({
+                            updateDefaultSongSettings({
                               songFontSize: Number(e.target.value),
                             })
                           }
@@ -2765,9 +2829,9 @@ export default function ControlPanel() {
                         <span className="control-label">Transform</span>
                         <select
                           className="input"
-                          value={activeSongSettings.songTextTransform}
+                          value={defaultSongSettings.songTextTransform}
                           onChange={(e) =>
-                            updateActiveSongSettings({
+                            updateDefaultSongSettings({
                               songTextTransform: e.target.value as any,
                             })
                           }
@@ -2782,9 +2846,9 @@ export default function ControlPanel() {
                         <span className="control-label">Weight</span>
                         <select
                           className="input"
-                          value={activeSongSettings.songFontWeight}
+                          value={defaultSongSettings.songFontWeight}
                           onChange={(e) =>
-                            updateActiveSongSettings({
+                            updateDefaultSongSettings({
                               songFontWeight: e.target.value,
                             })
                           }
@@ -3176,7 +3240,6 @@ export default function ControlPanel() {
                   <button
                     className="btn btn-primary"
                     onClick={() => {
-                      updateDefaultSongSettings(activeSongSettings);
                       saveGlobalSettings();
                       setIsSettingsOpen(false);
                     }}
@@ -6262,19 +6325,36 @@ export default function ControlPanel() {
                         letterSpacing: "0.05em",
                       }}
                     >
-                      Animation Templates (1 Available)
+                      Animation Templates (3 Available)
                     </span>
                   </div>
 
                   {/* Template 1: Dynamic AI Kinetic */}
                   <div
                     style={{
-                      background: "rgba(15, 23, 42, 0.75)",
-                      border: "2px solid var(--primary)",
+                      background:
+                        (activeSongSettings.animationTemplate || "guessing-kinetic") ===
+                        "guessing-kinetic"
+                          ? "linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(15, 23, 42, 0.85))"
+                          : "rgba(15, 23, 42, 0.45)",
+                      border:
+                        (activeSongSettings.animationTemplate || "guessing-kinetic") ===
+                        "guessing-kinetic"
+                          ? "2px solid var(--primary)"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
                       borderRadius: "10px",
                       padding: "12px",
-                      position: "relative",
-                      boxShadow: "0 4px 15px rgba(59, 130, 246, 0.15)",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      boxShadow:
+                        (activeSongSettings.animationTemplate || "guessing-kinetic") ===
+                        "guessing-kinetic"
+                          ? "0 4px 15px rgba(59, 130, 246, 0.2)"
+                          : "none",
+                    }}
+                    onClick={() => {
+                      updateActiveSongSettings({ animationTemplate: "guessing-kinetic" });
+                      setPreviewAnimationKey((k) => k + 1);
                     }}
                   >
                     <div
@@ -6282,7 +6362,7 @@ export default function ControlPanel() {
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "space-between",
-                        marginBottom: "6px",
+                        marginBottom: "4px",
                       }}
                     >
                       <div
@@ -6292,100 +6372,288 @@ export default function ControlPanel() {
                           gap: "6px",
                         }}
                       >
-                        <span style={{ fontWeight: 700, fontSize: "0.9rem" }}>
-                          Dynamic AI Kinetic
+                        <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
+                          1. Dynamic AI Kinetic
                         </span>
                       </div>
-                      <span
-                        style={{
-                          padding: "2px 8px",
-                          background: "var(--primary)",
-                          color: "white",
-                          borderRadius: "12px",
-                          fontSize: "0.7rem",
-                          fontWeight: 700,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        <Check size={12} /> Active
-                      </span>
+                      {(activeSongSettings.animationTemplate || "guessing-kinetic") ===
+                      "guessing-kinetic" ? (
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            background: "var(--primary)",
+                            color: "white",
+                            borderRadius: "12px",
+                            fontSize: "0.7rem",
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Check size={12} /> Active
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            color: "var(--text-muted)",
+                            padding: "2px 6px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          Click to select
+                        </span>
+                      )}
                     </div>
                     <p
                       style={{
-                        fontSize: "0.75rem",
+                        fontSize: "0.74rem",
                         color: "var(--text-muted)",
-                        margin: "0 0 10px 0",
+                        margin: 0,
                         lineHeight: 1.4,
                       }}
                     >
-                      Varies animation style dynamically per phrase — guessing
-                      stomp, whip pan, bounce, 3D flip, and roll animations
-                      word-by-word.
+                      Varies animation style dynamically per phrase — guessing stomp, whip pan, bounce, 3D flip, and roll animations word-by-word.
                     </p>
+                  </div>
 
-                    {/* Interactive Live Preview */}
+                  {/* Template 2: Staggered Per-Character Text Reveal with Spring Drop-In and Secondary Subtext Slide-Up */}
+                  <div
+                    style={{
+                      background:
+                        activeSongSettings.animationTemplate === "staggered-char-spring"
+                          ? "linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(15, 23, 42, 0.85))"
+                          : "rgba(15, 23, 42, 0.45)",
+                      border:
+                        activeSongSettings.animationTemplate === "staggered-char-spring"
+                          ? "2px solid var(--primary)"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      boxShadow:
+                        activeSongSettings.animationTemplate === "staggered-char-spring"
+                          ? "0 4px 15px rgba(59, 130, 246, 0.2)"
+                          : "none",
+                    }}
+                    onClick={() => {
+                      updateActiveSongSettings({ animationTemplate: "staggered-char-spring" });
+                      setPreviewAnimationKey((k) => k + 1);
+                    }}
+                  >
                     <div
                       style={{
-                        background: "#05070f",
-                        borderRadius: "8px",
-                        padding: "16px 12px",
-                        border: "1px solid rgba(255, 255, 255, 0.1)",
-                        minHeight: "85px",
                         display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        position: "relative",
-                        overflow: "hidden",
+                        justifyContent: "space-between",
+                        marginBottom: "4px",
                       }}
                     >
                       <div
                         style={{
-                          position: "absolute",
-                          top: "4px",
-                          right: "6px",
-                          zIndex: 2,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
                         }}
                       >
-                        <button
-                          className="icon-btn"
+                        <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
+                          2. Staggered Per-Character Text Reveal with Spring Drop-In and Secondary Subtext Slide-Up
+                        </span>
+                      </div>
+                      {activeSongSettings.animationTemplate === "staggered-char-spring" ? (
+                        <span
                           style={{
-                            padding: "3px 6px",
+                            padding: "2px 8px",
+                            background: "var(--primary)",
+                            color: "white",
+                            borderRadius: "12px",
                             fontSize: "0.7rem",
-                            background: "rgba(255,255,255,0.08)",
-                            borderRadius: "4px",
+                            fontWeight: 700,
                             display: "flex",
                             alignItems: "center",
-                            gap: "3px",
+                            gap: "4px",
+                            flexShrink: 0,
                           }}
-                          onClick={() => setPreviewAnimationKey((k) => k + 1)}
-                          title="Replay Animation Preview"
                         >
-                          <RotateCcw size={11} /> Replay
-                        </button>
-                      </div>
+                          <Check size={12} /> Active
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            color: "var(--text-muted)",
+                            padding: "2px 6px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          Click to select
+                        </span>
+                      )}
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "0.74rem",
+                        color: "var(--text-muted)",
+                        margin: 0,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Individual characters drop in with spring physics overshoot and staggered ripple delay, followed by secondary subtext sliding up smoothly with subtle blur clearance.
+                    </p>
+                  </div>
 
+                  {/* Template 3: Zoom In From Bottom (Rise & Expand) */}
+                  <div
+                    style={{
+                      background:
+                        activeSongSettings.animationTemplate === "zoom-in-bottom"
+                          ? "linear-gradient(135deg, rgba(37, 99, 235, 0.22), rgba(15, 23, 42, 0.85))"
+                          : "rgba(15, 23, 42, 0.45)",
+                      border:
+                        activeSongSettings.animationTemplate === "zoom-in-bottom"
+                          ? "2px solid var(--primary)"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: "10px",
+                      padding: "12px",
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                      boxShadow:
+                        activeSongSettings.animationTemplate === "zoom-in-bottom"
+                          ? "0 4px 15px rgba(59, 130, 246, 0.2)"
+                          : "none",
+                    }}
+                    onClick={() => {
+                      updateActiveSongSettings({ animationTemplate: "zoom-in-bottom" });
+                      setPreviewAnimationKey((k) => k + 1);
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: "4px",
+                      }}
+                    >
                       <div
-                        key={previewAnimationKey}
                         style={{
-                          width: "100%",
-                          textAlign: "center",
-                          fontSize: "1.1rem",
-                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
                         }}
                       >
-                        <AnimatedLyric
-                          text={
-                            songChunks[activeSongChunkIndex ?? 0] ||
-                            "Amazing grace how sweet the sound"
-                          }
-                          isEnabled={activeSongSettings.enableKineticTypography}
-                          kineticTempo={
-                            activeSongSettings.kineticTempo || "fast"
-                          }
-                        />
+                        <span style={{ fontWeight: 700, fontSize: "0.88rem" }}>
+                          3. Zoom In From Bottom & Gentle Slide-Up Idle
+                        </span>
                       </div>
+                      {activeSongSettings.animationTemplate === "zoom-in-bottom" ? (
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            background: "var(--primary)",
+                            color: "white",
+                            borderRadius: "12px",
+                            fontSize: "0.7rem",
+                            fontWeight: 700,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <Check size={12} /> Active
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            fontSize: "0.7rem",
+                            color: "var(--text-muted)",
+                            padding: "2px 6px",
+                            flexShrink: 0,
+                          }}
+                        >
+                          Click to select
+                        </span>
+                      )}
+                    </div>
+                    <p
+                      style={{
+                        fontSize: "0.74rem",
+                        color: "var(--text-muted)",
+                        margin: 0,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      The entire text slide zooms in smoothly from the bottom as a single cohesive unit, then gently glides upward continuously as an idle motion (both lines together).
+                    </p>
+                  </div>
+
+                  {/* Interactive Live Preview for Selected Template */}
+                  <div
+                    style={{
+                      background: "#05070f",
+                      borderRadius: "8px",
+                      padding: "18px 12px",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      minHeight: "95px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      position: "relative",
+                      overflow: "hidden",
+                      marginTop: "2px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "6px",
+                        right: "6px",
+                        zIndex: 2,
+                      }}
+                    >
+                      <button
+                        className="icon-btn"
+                        style={{
+                          padding: "3px 8px",
+                          fontSize: "0.7rem",
+                          background: "rgba(255,255,255,0.1)",
+                          borderRadius: "4px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          color: "white",
+                        }}
+                        onClick={() => setPreviewAnimationKey((k) => k + 1)}
+                        title="Replay Animation Preview"
+                      >
+                        <RotateCcw size={11} /> Replay
+                      </button>
+                    </div>
+
+                    <div
+                      key={previewAnimationKey}
+                      style={{
+                        width: "100%",
+                        textAlign: "center",
+                        fontSize: "1.1rem",
+                        fontWeight: 700,
+                      }}
+                    >
+                      <AnimatedLyric
+                        text={
+                          songChunks[activeSongChunkIndex ?? 0] ||
+                          "Amazing grace how sweet the sound\nThat saved a wretch like me"
+                        }
+                        isEnabled={activeSongSettings.enableKineticTypography}
+                        kineticTempo={activeSongSettings.kineticTempo || "fast"}
+                        animationTemplate={
+                          activeSongSettings.animationTemplate || "guessing-kinetic"
+                        }
+                      />
                     </div>
                   </div>
 
@@ -6412,15 +6680,15 @@ export default function ControlPanel() {
 
                     {[
                       {
-                        title: "Template 2: Uniform Kinetic Stomp",
+                        title: "Template 4: Uniform Kinetic Stomp",
                         desc: "Follows a single synchronized stomp rhythm for high-energy songs.",
                       },
                       {
-                        title: "Template 3: Smooth Word Reveal",
+                        title: "Template 5: Smooth Word Reveal",
                         desc: "Linear word-by-word reveal along a steady, gentle worship cadence.",
                       },
                       {
-                        title: "Template 4: Cinematic Drift",
+                        title: "Template 6: Cinematic Drift",
                         desc: "Subtle majestic float with soft blur and graceful fade transitions.",
                       },
                     ].map((t) => (
@@ -6720,13 +6988,19 @@ export default function ControlPanel() {
                           return;
                         }
                         try {
+                          const animSettings = {
+                            enableKineticTypography: !!activeSongSettings.enableKineticTypography,
+                            kineticTempo: activeSongSettings.kineticTempo || "fast",
+                            animation: activeSongSettings.animation || "none",
+                            animationTemplate: activeSongSettings.animationTemplate || "guessing-kinetic",
+                          };
                           if (activeSongId) {
                             await updateSong(
                               activeSongId,
                               activeSongTitle,
                               activeSongArtist,
                               lyrics,
-                              activeSongSettings,
+                              animSettings,
                               activeSongFilename,
                             );
                             toast.success("Song updated in songs folder!");
@@ -6735,7 +7009,7 @@ export default function ControlPanel() {
                               activeSongTitle,
                               activeSongArtist,
                               lyrics,
-                              activeSongSettings,
+                              animSettings,
                             );
                             setActiveSongId(newId);
                             setActiveSongFilename(

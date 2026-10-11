@@ -193,11 +193,59 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
     
     let variants = {};
     if (isKinetic) {
-      variants = {
-        initial: { opacity: 1 },
-        animate: { opacity: 1 },
-        exit: { opacity: 0, scale: 0.9, filter: "blur(10px)", transition: { duration: 0.3 } }
-      };
+      if (state.animationTemplate === "zoom-in-bottom") {
+        const tempoSec =
+          state.kineticTempo === "slow"
+            ? 0.85
+            : state.kineticTempo === "medium"
+              ? 0.55
+              : 0.38;
+        const exitSec = tempoSec * 0.82;
+
+        variants = {
+          initial: {
+            opacity: 0,
+            y: "7cqi",
+            scale: 0.8,
+            filter: "blur(6px)",
+            zIndex: 3,
+          },
+          animate: {
+            opacity: 1,
+            y: 0,
+            scale: 1,
+            filter: "blur(0px)",
+            zIndex: 3,
+            transition: {
+              duration: tempoSec,
+              ease: [0.16, 1, 0.3, 1],
+            },
+          },
+          exit: {
+            opacity: 0,
+            y: "-7cqi",
+            scale: 1.05,
+            filter: "blur(6px)",
+            zIndex: 2,
+            transition: {
+              duration: exitSec,
+              ease: [0.25, 1, 0.5, 1],
+            },
+          },
+        };
+      } else {
+        variants = {
+          initial: { opacity: 1, zIndex: 3 },
+          animate: { opacity: 1, zIndex: 3 },
+          exit: {
+            opacity: 0,
+            y: "-4cqi",
+            filter: "blur(8px)",
+            zIndex: 2,
+            transition: { duration: 0.32, ease: [0.25, 1, 0.5, 1] },
+          },
+        };
+      }
     } else if (state.animation === "zoom") {
       variants = {
         initial: { opacity: 0, scale: 0.9, filter: "blur(6px)" },
@@ -337,6 +385,8 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
                 text={state.text}
                 isEnabled={true}
                 kineticTempo={state.kineticTempo}
+                animationTemplate={state.animationTemplate}
+                disableIntro={state.animationTemplate === "zoom-in-bottom"}
               />
             ) : (
               state.text

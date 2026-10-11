@@ -128,6 +128,65 @@ function localMediaServer() {
         }
       });
 
+      // Super Settings (super_settings.json) handler
+      const settingsFilePath = path.resolve(process.cwd(), 'super_settings.json');
+
+      const readSuperSettings = () => {
+        try {
+          if (fs.existsSync(settingsFilePath)) {
+            const raw = fs.readFileSync(settingsFilePath, 'utf8');
+            return JSON.parse(raw);
+          }
+        } catch (e) {
+          console.error('Error reading super_settings.json:', e);
+        }
+        return null;
+      };
+
+      const writeSuperSettings = (data: any) => {
+        let existing = readSuperSettings() || {};
+        const payload = {
+          version: '1.0',
+          ...existing,
+          ...data,
+          updatedAt: new Date().toISOString(),
+        };
+        fs.writeFileSync(settingsFilePath, JSON.stringify(payload, null, 2), 'utf8');
+        return payload;
+      };
+
+      server.middlewares.use('/api/settings', (req, res, next) => {
+        if (req.method === 'GET') {
+          const current = readSuperSettings();
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+          res.end(JSON.stringify({ success: true, settings: current }));
+          return;
+        }
+
+        if (req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => { body += chunk.toString(); });
+          req.on('end', () => {
+            try {
+              const parsed = JSON.parse(body);
+              const saved = writeSuperSettings(parsed);
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, settings: saved }));
+            } catch (e: any) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: e.message }));
+            }
+          });
+          return;
+        }
+
+        next();
+      });
+
       server.middlewares.use('/api/local-ip', (req, res) => {
         const interfaces = os.networkInterfaces();
         let localIp = '127.0.0.1';

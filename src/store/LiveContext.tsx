@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { updateLiveState, subscribeToLiveState } from '../services/dbService';
+import { settingsService, SuperSettingsPayload } from '../services/settingsService';
 
 export interface BibleSettings {
   layout: 'FS' | 'LT';
@@ -230,7 +231,7 @@ interface LiveContextType {
   projectSong: (title: string, text: string, songSettings?: Partial<SongSettings>) => void;
   projectLive: (newState: Partial<LiveState>) => void;
   clearLive: () => void;
-  saveGlobalSettings: () => void;
+  saveGlobalSettings: (customSettings?: SuperSettingsPayload) => Promise<boolean>;
 }
 
 const LiveContext = createContext<LiveContextType | undefined>(undefined);
@@ -244,7 +245,50 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     buildLiveState('clear', { title: '', text: '' }, getStoredGlobalSettings(), getStoredBibleSettings(), getStoredDefaultSongSettings())
   );
 
+  const bibleSettingsRef = useRef(bibleSettings);
+  const defaultSongSettingsRef = useRef(defaultSongSettingsState);
+  const globalSettingsRef = useRef(globalSettings);
+  const liveStateRef = useRef(liveState);
+
+  useEffect(() => { bibleSettingsRef.current = bibleSettings; }, [bibleSettings]);
+  useEffect(() => { defaultSongSettingsRef.current = defaultSongSettingsState; }, [defaultSongSettingsState]);
+  useEffect(() => { globalSettingsRef.current = globalSettings; }, [globalSettings]);
+  useEffect(() => { liveStateRef.current = liveState; }, [liveState]);
+
   useEffect(() => {
+    // 1. Fetch super_settings.json from server on startup so settings persist across IP/device changes
+    const loadSuperSettings = async () => {
+      try {
+        const remote = await settingsService.getSuperSettings();
+        if (remote) {
+          if (remote.bibleSettings) {
+            setBibleSettings((prev) => ({ ...prev, ...remote.bibleSettings }));
+            try {
+              localStorage.setItem('webProjectorBibleSettings', JSON.stringify({ ...defaultBibleSettings, ...remote.bibleSettings }));
+            } catch (e) {}
+          }
+          if (remote.defaultSongSettings) {
+            setDefaultSongSettingsState((prev) => ({ ...prev, ...remote.defaultSongSettings }));
+            try {
+              localStorage.setItem('webProjectorDefaultSongSettings', JSON.stringify({ ...defaultSongSettings, ...remote.defaultSongSettings }));
+            } catch (e) {}
+          }
+          if (remote.globalSettings) {
+            setGlobalSettings((prev) => ({ ...prev, ...remote.globalSettings }));
+            try {
+              localStorage.setItem('webProjectorGlobalSettings', JSON.stringify({ ...defaultGlobalSettings, ...remote.globalSettings }));
+            } catch (e) {}
+          }
+          if (remote.liveState) {
+            setLiveState((prev) => ({ ...prev, ...remote.liveState }));
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load super_settings.json from server', e);
+      }
+    };
+    loadSuperSettings();
+
     // Subscribe to Local SSE Server for cross-device/OBS syncing
     const unsubscribe = subscribeToLiveState((state) => {
       if (state) {
@@ -285,6 +329,15 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('webProjectorDefaultSongSettings', JSON.stringify(updated));
       return updated;
     });
+
+    setLiveState((prev) => {
+      if (prev.type === 'song') {
+        const next = { ...prev, ...settings };
+        updateLiveState(next);
+        return next;
+      }
+      return prev;
+    });
   };
 
   const updateGlobalSettings = (settings: Partial<GlobalDisplaySettings>) => {
@@ -308,7 +361,15 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   };
 
   const projectSong = (title: string, text: string, songSettings?: Partial<SongSettings>) => {
-    const effectiveSongSettings = { ...defaultSongSettingsState, ...(songSettings || {}) };
+    // Individual songs always strictly follow the master song styling in Settings.
+    // The ONLY property that can change per-song is animation (kinetic typography, tempo, template):
+    const effectiveSongSettings: SongSettings = {
+      ...defaultSongSettingsState,
+      enableKineticTypography: !!songSettings?.enableKineticTypography,
+      kineticTempo: songSettings?.kineticTempo ?? defaultSongSettingsState.kineticTempo ?? 'fast',
+      animation: songSettings?.animation ?? defaultSongSettingsState.animation ?? 'none',
+      animationTemplate: songSettings?.animationTemplate ?? defaultSongSettingsState.animationTemplate ?? 'guessing-kinetic',
+    };
     const nextLive = buildLiveState('song', { title, text }, globalSettings, bibleSettings, effectiveSongSettings);
     setLiveState(nextLive);
     updateLiveState(nextLive);
@@ -336,12 +397,28 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const saveGlobalSettings = () => {
-    localStorage.setItem('webProjectorBibleSettings', JSON.stringify(bibleSettings));
-    localStorage.setItem('webProjectorDefaultSongSettings', JSON.stringify(defaultSongSettingsState));
-    localStorage.setItem('webProjectorGlobalSettings', JSON.stringify(globalSettings));
-    localStorage.setItem('webProjectorSettings', JSON.stringify(liveState));
-    import('react-hot-toast').then((module) => module.toast.success('Settings saved successfully!'));
+  const saveGlobalSettings = async (customSettings?: SuperSettingsPayload): Promise<boolean> => {
+    const payload: SuperSettingsPayload = {
+      bibleSettings: customSettings?.bibleSettings || bibleSettingsRef.current,
+      defaultSongSettings: customSettings?.defaultSongSettings || defaultSongSettingsRef.current,
+      globalSettings: customSettings?.globalSettings || globalSettingsRef.current,
+      liveState: customSettings?.liveState || liveStateRef.current,
+    };
+
+    try {
+      localStorage.setItem('webProjectorBibleSettings', JSON.stringify(payload.bibleSettings));
+      localStorage.setItem('webProjectorDefaultSongSettings', JSON.stringify(payload.defaultSongSettings));
+      localStorage.setItem('webProjectorGlobalSettings', JSON.stringify(payload.globalSettings));
+      localStorage.setItem('webProjectorSettings', JSON.stringify(payload.liveState));
+    } catch (e) {}
+
+    const success = await settingsService.saveSuperSettings(payload);
+    if (success) {
+      import('react-hot-toast').then((m) => m.toast.success('Settings saved to super_settings.json!'));
+    } else {
+      import('react-hot-toast').then((m) => m.toast.error('Failed to update super_settings.json on server'));
+    }
+    return success;
   };
 
   return (

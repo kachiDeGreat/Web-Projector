@@ -39,6 +39,10 @@
       {
         "from": "public/backgrounds",
         "to": "public/backgrounds"
+      },
+      {
+        "from": "super_settings.json",
+        "to": "super_settings.json"
       }
     ],
     "win": {

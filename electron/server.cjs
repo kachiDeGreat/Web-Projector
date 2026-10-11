@@ -35,6 +35,35 @@ function startServer({ port = 5173, baseDir = process.cwd(), userDataDir = null 
     }
   });
 
+  const settingsFilePath = path.join(storageRoot, 'super_settings.json');
+  const fallbackSettingsPath = path.join(baseDir, 'super_settings.json');
+
+  const readSuperSettings = () => {
+    try {
+      if (fs.existsSync(settingsFilePath)) {
+        return JSON.parse(fs.readFileSync(settingsFilePath, 'utf8'));
+      }
+      if (fs.existsSync(fallbackSettingsPath)) {
+        return JSON.parse(fs.readFileSync(fallbackSettingsPath, 'utf8'));
+      }
+    } catch (e) {
+      console.error('Error reading super_settings.json:', e);
+    }
+    return null;
+  };
+
+  const writeSuperSettings = (data) => {
+    let existing = readSuperSettings() || {};
+    const payload = {
+      version: '1.0',
+      ...existing,
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+    fs.writeFileSync(settingsFilePath, JSON.stringify(payload, null, 2), 'utf8');
+    return payload;
+  };
+
   // Song parsing & serialization helpers
   const parseSongTxt = (content, filename) => {
     const lines = content.split(/\r?\n/);
@@ -225,6 +254,35 @@ function startServer({ port = 5173, baseDir = process.cwd(), userDataDir = null 
         }
       });
       return;
+    }
+
+    // 2.5 /api/settings
+    if (pathname === '/api/settings') {
+      if (req.method === 'GET') {
+        const current = readSuperSettings();
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+        });
+        res.end(JSON.stringify({ success: true, settings: current }));
+        return;
+      }
+      if (req.method === 'POST') {
+        let body = '';
+        req.on('data', (chunk) => { body += chunk.toString(); });
+        req.on('end', () => {
+          try {
+            const parsed = JSON.parse(body);
+            const saved = writeSuperSettings(parsed);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, settings: saved }));
+          } catch (e) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+        return;
+      }
     }
 
     // 3. /api/local-ip

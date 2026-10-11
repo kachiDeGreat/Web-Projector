@@ -50,6 +50,18 @@ function ensureStarterAssets() {
       console.error('Error copying starter bibles:', e);
     }
   }
+
+  const userSettingsFile = path.join(userDataDir, 'super_settings.json');
+  if (!fs.existsSync(userSettingsFile)) {
+    try {
+      const srcSettings = path.join(baseDir, 'super_settings.json');
+      if (fs.existsSync(srcSettings)) {
+        fs.copyFileSync(srcSettings, userSettingsFile);
+      }
+    } catch (e) {
+      console.error('Error copying starter super_settings.json:', e);
+    }
+  }
 }
 
 async function openOrUpdateProjector() {

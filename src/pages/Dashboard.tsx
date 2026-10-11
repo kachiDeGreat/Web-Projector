@@ -72,7 +72,9 @@ const Dashboard = () => {
         const text = await file.text();
         const id = "bible_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
         const name = file.name.replace(/\.[^/.]+$/, "");
-        await bibleService.parseZefaniaXML(text, id, name);
+        const parsed = await bibleService.parseZefaniaXML(text, id, name);
+        const standardXml = bibleService.convertToStandardZefaniaXML(parsed);
+        await bibleService.saveBibleToServer(file.name, standardXml);
       }
       toast.success(`Successfully uploaded ${selectedBibles.length} Bible(s).`, { id: toastId });
       setShowBibleModal(false);

@@ -6,6 +6,8 @@ interface AnimatedLyricProps {
   isEnabled?: boolean; // Controls whether animation is on or off
   kineticTempo?: "slow" | "medium" | "fast" | "random";
   introAnimation?: string; // Specific intro animation to use
+  animationTemplate?: string; // Template style: 'guessing-kinetic' | 'staggered-char-spring' | 'zoom-in-bottom'
+  disableIntro?: boolean; // When true, parent motion container handles intro entrance (e.g. OutputView)
 }
 
 // 60 Awesome kinetic animations! (Added more to ensure extreme variety)
@@ -185,6 +187,8 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
   isEnabled = true,
   kineticTempo = "fast",
   introAnimation,
+  animationTemplate = "guessing-kinetic",
+  disableIntro = false,
 }) => {
   // Determine if it's a multiline repetition
   const { isVerticalMarquee, isHorizontalMarquee, displayLines } =
@@ -329,48 +333,187 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
       )}
 
       {!isVerticalMarquee && !isHorizontalMarquee && (
-        <div className="lyric-lines-container">
-          {displayLines.slice(0, 2).map((line, lineIndex) => {
-            const lineAnim = lineAnimations[lineIndex] || "zoom-in";
-            const words = line.split(/\s+/);
-            const isSecondLine = lineIndex === 1;
+        animationTemplate === "staggered-char-spring" ? (
+          <div className="template-char-spring-container">
+            {/* Primary Line: Staggered Per-Character Spring Drop-In */}
+            <div className="char-spring-line-primary">
+              {(() => {
+                const primaryText = displayLines[0] || "";
+                const primaryWords = primaryText.split(/\s+/).filter(Boolean);
+                const charDuration =
+                  kineticTempo === "slow"
+                    ? "0.85s"
+                    : kineticTempo === "medium"
+                      ? "0.55s"
+                      : "0.36s";
+                const charStagger =
+                  kineticTempo === "slow"
+                    ? 0.045
+                    : kineticTempo === "medium"
+                      ? 0.028
+                      : 0.016;
+
+                let charCounter = 0;
+                return primaryWords.map((word, wIdx) => {
+                  const chars = word.split("");
+                  return (
+                    <span key={`w-${wIdx}`} className="char-spring-word">
+                      {chars.map((char, cIdx) => {
+                        const delay = charCounter * charStagger;
+                        charCounter++;
+                        return (
+                          <span
+                            key={`c-${cIdx}`}
+                            className="char-spring-char"
+                            style={{
+                              animationDuration: charDuration,
+                              animationDelay: `${delay.toFixed(3)}s`,
+                              animationTimingFunction:
+                                "cubic-bezier(0.34, 1.56, 0.64, 1)",
+                            }}
+                          >
+                            {char}
+                          </span>
+                        );
+                      })}
+                    </span>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Secondary Subtext Line(s): Slide-Up */}
+            {(() => {
+              const charStagger =
+                kineticTempo === "slow"
+                  ? 0.045
+                  : kineticTempo === "medium"
+                    ? 0.028
+                    : 0.016;
+              const subtextDuration =
+                kineticTempo === "slow"
+                  ? "0.95s"
+                  : kineticTempo === "medium"
+                    ? "0.65s"
+                    : "0.42s";
+              const primaryLength = (displayLines[0] || "").length;
+              const subtextDelay = Math.max(
+                0.12,
+                Math.min(primaryLength * charStagger * 0.55 + 0.08, 0.6),
+              );
+
+              return displayLines.slice(1).map((subline, sIdx) => {
+                const lineDelay = subtextDelay + sIdx * 0.12;
+                return (
+                  <div
+                    key={`sub-${sIdx}`}
+                    className="char-spring-subtext-line"
+                    style={{
+                      animationDuration: subtextDuration,
+                      animationDelay: `${lineDelay.toFixed(3)}s`,
+                      animationTimingFunction:
+                        "cubic-bezier(0.16, 1, 0.3, 1)",
+                    }}
+                  >
+                    {subline}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+        ) : animationTemplate === "zoom-in-bottom" ? (
+          (() => {
+            const introDuration =
+              kineticTempo === "slow"
+                ? "0.85s"
+                : kineticTempo === "medium"
+                  ? "0.55s"
+                  : "0.38s";
+
+            const idleDuration =
+              kineticTempo === "slow"
+                ? "14s"
+                : kineticTempo === "medium"
+                  ? "10s"
+                  : "7s";
 
             return (
               <div
-                key={`line-${lineIndex}`}
-                className="lyric-line"
+                className={`template-zoom-bottom-container ${disableIntro ? "no-intro-transform" : ""}`}
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  justifyContent: "center",
-                  margin: "0",
-                  lineHeight: "1.3",
-                  padding: "0.1em 0",
-                  color: isSecondLine ? "#FFD700" : "inherit",
+                  animationDuration: disableIntro ? "0s" : introDuration,
+                  animationTimingFunction: "cubic-bezier(0.16, 1, 0.3, 1)",
                 }}
               >
-                {words.map((word, wordIndex) => (
-                  <div
-                    key={`${word}-${wordIndex}`}
-                    className={`lyric-word animate-${lineAnim}`}
-                    style={{
-                      animationDuration: baseDuration,
-                      animationDelay: `${lineIndex * 0.1 + wordIndex * 0.03}s`,
-                    }}
-                  >
-                    <span
-                      className={`lyric-word-inner ${lineIdleAnimations[lineIndex]}`}
-                      style={{ animationDuration: idleDuration }}
-                    >
-                      {word}
-                    </span>
-                    &nbsp;
-                  </div>
-                ))}
+                <div
+                  className="zoom-bottom-idle-wrapper"
+                  style={{
+                    animationDuration: idleDuration,
+                    animationDelay: disableIntro ? "0s" : introDuration,
+                  }}
+                >
+                  {displayLines.slice(0, 2).map((line, lineIndex) => {
+                    const isSecondLine = lineIndex === 1;
+                    return (
+                      <div
+                        key={`zoom-line-${lineIndex}`}
+                        className="zoom-bottom-line"
+                        style={{
+                          color: isSecondLine ? "#FFD700" : "inherit",
+                        }}
+                      >
+                        {line}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             );
-          })}
-        </div>
+          })()
+        ) : (
+          <div className="lyric-lines-container">
+            {displayLines.slice(0, 2).map((line, lineIndex) => {
+              const lineAnim = lineAnimations[lineIndex] || "zoom-in";
+              const words = line.split(/\s+/);
+              const isSecondLine = lineIndex === 1;
+
+              return (
+                <div
+                  key={`line-${lineIndex}`}
+                  className="lyric-line"
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                    margin: "0",
+                    lineHeight: "1.3",
+                    padding: "0.1em 0",
+                    color: isSecondLine ? "#FFD700" : "inherit",
+                  }}
+                >
+                  {words.map((word, wordIndex) => (
+                    <div
+                      key={`${word}-${wordIndex}`}
+                      className={`lyric-word animate-${lineAnim}`}
+                      style={{
+                        animationDuration: baseDuration,
+                        animationDelay: `${lineIndex * 0.1 + wordIndex * 0.03}s`,
+                      }}
+                    >
+                      <span
+                        className={`lyric-word-inner ${lineIdleAnimations[lineIndex]}`}
+                        style={{ animationDuration: idleDuration }}
+                      >
+                        {word}
+                      </span>
+                      &nbsp;
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )
       )}
     </div>
   );
