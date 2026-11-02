@@ -1,7 +1,9 @@
 {
   "name": "web-projector",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Professional Church & Stage Projection Software for Lyrics, Bible Scriptures, and Media",
+  "author": "Web Projector Team <support@webprojector.app>",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -9,22 +11,28 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "electron:start": "electron electron/main.cjs",
-    "electron:dev": "vite build && electron electron/main.cjs",
-    "build:exe": "vite build && electron-builder --win",
-    "build:linux": "vite build && electron-builder --linux",
-    "build:all": "vite build && electron-builder -wl"
+    "electron:start": "electron electron/main.cjs --no-sandbox",
+    "electron:dev": "vite build && electron electron/main.cjs --no-sandbox",
+    "build:exe": "npm run build && electron-builder --win nsis portable",
+    "build:win": "npm run build && electron-builder --win nsis portable",
+    "build:linux": "npm run build && electron-builder --linux AppImage deb",
+    "build:mac": "npm run build && electron-builder --mac zip",
+    "build:all": "npm run build && electron-builder -wl",
+    "dist": "npm run build && electron-builder"
   },
   "build": {
     "appId": "com.webprojector.app",
     "productName": "Web Projector",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
+      "build/**/*",
       "public/**/*",
+      "node_modules/formidable/**/*",
       "package.json"
     ],
     "extraResources": [
@@ -46,23 +54,25 @@
       }
     ],
     "win": {
-      "icon": "build/icon.ico",
       "target": [
-        "dir",
-        "zip"
-      ]
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico",
+      "signExecutable": false
     },
     "linux": {
-      "icon": "build/icon.png",
       "target": [
-        "dir",
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
+      "icon": "build/icon.png",
       "category": "AudioVideo"
     }
   },
   "dependencies": {
     "firebase": "^12.17.1",
+    "formidable": "^3.5.4",
     "framer-motion": "^13.4.6",
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",
@@ -79,7 +89,6 @@
     "@vitejs/plugin-react": "^6.0.4",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3",
-    "formidable": "^3.5.4",
     "oxlint": "^1.75.0",
     "typescript": "^7.0.2",
     "vite": "^8.2.0",

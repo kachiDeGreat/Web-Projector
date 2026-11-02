@@ -16,6 +16,8 @@ import {
   Loader,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Plus,
   RotateCcw,
   Check,
@@ -450,7 +452,7 @@ export default function ControlPanel() {
       verse: item.verseNumber,
     });
     setActiveSongChunkIndex(null);
-    projectBible(item.reference, item.text);
+    projectBible(item.reference, item.text, item.verseNumber);
 
     // Bump to top of history
     setBibleHistory((prev) => {
@@ -1528,7 +1530,7 @@ export default function ControlPanel() {
                 if (shouldProject) {
                   setActiveSongChunkIndex(null);
                   const refString = `${matchedBook.name} ${chapNum}:${verseNum} (${targetBible.name})`;
-                  projectBible(refString, matchedVerse.text);
+                  projectBible(refString, matchedVerse.text, verseNum);
 
                   // Add to history (only when hit enter & sent to program)
                   addToBibleHistory({
@@ -1576,7 +1578,7 @@ export default function ControlPanel() {
     });
     setActiveSongChunkIndex(null);
     const refString = `${curBook?.name || "Bible"} ${curChap?.number || chapNum}:${verse.number} (${activeBible?.name || ""})`;
-    projectBible(refString, verse.text);
+    projectBible(refString, verse.text, verse.number);
 
     if (addToHistory && curBook && activeBible && curChap) {
       addToBibleHistory({
@@ -1616,7 +1618,7 @@ export default function ControlPanel() {
 
         if (newBook && newChap && newVerse) {
           const refString = `${newBook.name} ${newChap.number}:${newVerse.number} (${newBible.name})`;
-          projectBible(refString, newVerse.text);
+          projectBible(refString, newVerse.text, newVerse.number);
           addToBibleHistory({
             id: `${newBook.number}_${newChap.number}_${newVerse.number}_${newBible.id}_${Date.now()}`,
             reference: refString,
@@ -2511,6 +2513,34 @@ export default function ControlPanel() {
                         />
                       </div>
 
+                      <div className="control-group" style={{ gridColumn: "1 / -1", background: "rgba(255,255,255,0.03)", padding: "12px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.06)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span className="control-label" style={{ fontWeight: 600, margin: 0 }}>
+                                Auto-Fit Bible Verse Size (Fullscreen Middle)
+                              </span>
+                              <span style={{ fontSize: "0.7rem", padding: "2px 6px", background: "rgba(59, 130, 246, 0.2)", color: "#60a5fa", borderRadius: "4px", fontWeight: 700 }}>
+                                FS Middle Only
+                              </span>
+                            </div>
+                            <p style={{ margin: "4px 0 0 0", fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.4 }}>
+                              Dynamically scales Bible font size based on scripture character count so short verses appear bold and visible on large projection screens, while lengthy passages (e.g. Revelation 20:4) resize to fit without overflow.
+                            </p>
+                          </div>
+                          <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: "16px" }}>
+                            <input
+                              type="checkbox"
+                              checked={bibleSettings.bibleAutoFitFontSize ?? true}
+                              onChange={(e) =>
+                                updateBibleSettings({ bibleAutoFitFontSize: e.target.checked })
+                              }
+                            />
+                            <span className="toggle-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+
                       <div className="control-group" style={{ gridColumn: "1 / -1" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
                           <span className="control-label" style={{ fontWeight: 600 }}>Text Shadow Intensity</span>
@@ -2530,6 +2560,84 @@ export default function ControlPanel() {
                             })
                           }
                         />
+                      </div>
+
+                      <div className="control-group" style={{ gridColumn: "1 / -1", background: "rgba(255,255,255,0.03)", padding: "12px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.06)", marginTop: "4px" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: (globalSettings.enableTextOutline ?? true) ? "12px" : "0" }}>
+                          <div>
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                              <span className="control-label" style={{ fontWeight: 600, margin: 0 }}>
+                                Text Outline (Stroke)
+                              </span>
+                              <span style={{ fontSize: "0.7rem", padding: "2px 6px", background: "rgba(16, 185, 129, 0.2)", color: "#34d399", borderRadius: "4px", fontWeight: 700 }}>
+                                High Contrast
+                              </span>
+                            </div>
+                            <p style={{ margin: "4px 0 0 0", fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.4 }}>
+                              Paints a crisp, bold outline around text, verse numbers, and references so words pop clearly over stage lighting, images, or video loops.
+                            </p>
+                          </div>
+                          <label className="toggle-switch" style={{ flexShrink: 0, marginLeft: "16px" }}>
+                            <input
+                              type="checkbox"
+                              checked={globalSettings.enableTextOutline ?? true}
+                              onChange={(e) =>
+                                updateGlobalSettings({ enableTextOutline: e.target.checked })
+                              }
+                            />
+                            <span className="toggle-slider"></span>
+                          </label>
+                        </div>
+
+                        {(globalSettings.enableTextOutline ?? true) && (
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px", paddingTop: "8px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                            <div>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+                                <span className="control-label" style={{ fontSize: "0.78rem" }}>Outline Thickness</span>
+                                <span style={{ fontSize: "0.78rem", color: "var(--primary)", fontWeight: 700 }}>
+                                  {globalSettings.textOutlineWidth ?? 0.12} cqi
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                style={{ width: "100%" }}
+                                min="0.04"
+                                max="0.25"
+                                step="0.01"
+                                value={globalSettings.textOutlineWidth ?? 0.12}
+                                onChange={(e) =>
+                                  updateGlobalSettings({
+                                    textOutlineWidth: parseFloat(e.target.value),
+                                  })
+                                }
+                              />
+                            </div>
+
+                            <div>
+                              <span className="control-label" style={{ fontSize: "0.78rem", display: "block", marginBottom: "6px" }}>Outline Color</span>
+                              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                                <input
+                                  type="color"
+                                  value={globalSettings.textOutlineColor || "#000000"}
+                                  onChange={(e) =>
+                                    updateGlobalSettings({ textOutlineColor: e.target.value })
+                                  }
+                                  style={{
+                                    width: "36px",
+                                    height: "36px",
+                                    border: "1px solid var(--border-subtle)",
+                                    borderRadius: "6px",
+                                    cursor: "pointer",
+                                    background: "transparent",
+                                  }}
+                                />
+                                <span style={{ fontSize: "0.82rem", color: "var(--text-secondary)" }}>
+                                  {(globalSettings.textOutlineColor || "#000000").toUpperCase()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -7368,6 +7476,35 @@ export default function ControlPanel() {
                       LT
                     </button>
                   </div>
+                  {activeLayout === "FS" && isBibleContext && (
+                    <button
+                      className={`action-btn ${bibleSettings.bibleAutoFitFontSize ?? true ? "active" : ""}`}
+                      style={{
+                        padding: "4px 10px",
+                        fontSize: "0.78rem",
+                        borderRadius: "6px",
+                        background: (bibleSettings.bibleAutoFitFontSize ?? true)
+                          ? "var(--primary)"
+                          : "rgba(255,255,255,0.06)",
+                        color: (bibleSettings.bibleAutoFitFontSize ?? true)
+                          ? "#000000"
+                          : "var(--text-muted)",
+                        fontWeight: 700,
+                        border: "1px solid",
+                        borderColor: (bibleSettings.bibleAutoFitFontSize ?? true)
+                          ? "var(--primary)"
+                          : "rgba(255,255,255,0.12)",
+                      }}
+                      onClick={() =>
+                        updateBibleSettings({
+                          bibleAutoFitFontSize: !(bibleSettings.bibleAutoFitFontSize ?? true),
+                        })
+                      }
+                      title="Toggle Dynamic Auto-Fit Font Resizing for Fullscreen Middle layout"
+                    >
+                      ⚡ Auto-Fit: {(bibleSettings.bibleAutoFitFontSize ?? true) ? "ON" : "OFF"}
+                    </button>
+                  )}
                   {activeLayout === "LT" && isBibleContext && (
                     <button
                       className="action-btn"
@@ -7779,18 +7916,18 @@ export default function ControlPanel() {
             </div>
           ) : (
             /* Song Service Queue Box (for Songs and Animation tabs) */
-            <div className="program-history-container">
-              <div className="program-history-header">
-                <div className="program-history-title">
+            <div className="song-queue-container">
+              <div className="song-queue-header">
+                <div className="song-queue-title">
                   <Music size={13} style={{ color: "var(--primary)" }} />
                   <span>Song Service Queue</span>
-                  <span className="program-history-badge">
+                  <span className="song-queue-badge">
                     {songQueue.length}
                   </span>
                 </div>
                 {songQueue.length > 0 && (
                   <button
-                    className="program-history-clear-btn"
+                    className="song-queue-clear-btn"
                     onClick={clearSongQueue}
                     title="Clear song queue"
                   >
@@ -7799,9 +7936,9 @@ export default function ControlPanel() {
                 )}
               </div>
 
-              <div className="program-history-list">
+              <div className="song-queue-list">
                 {songQueue.length === 0 ? (
-                  <div className="program-history-empty">
+                  <div className="program-history-empty" style={{ margin: "auto 0" }}>
                     <Music
                       size={22}
                       style={{ opacity: 0.35, color: "var(--text-muted)" }}
@@ -7833,189 +7970,88 @@ export default function ControlPanel() {
                       liveState.title?.toLowerCase().trim() ===
                         item.title.toLowerCase().trim();
                     const isSelectedInEditor = activeSongId === item.songId;
+                    const hasDistinctArtist =
+                      Boolean(item.artist) &&
+                      item.artist.trim().toLowerCase() !== item.title.trim().toLowerCase();
 
                     return (
                       <div
                         key={item.id}
-                        className={`program-history-item ${isCurrentLive ? "is-live" : isSelectedInEditor ? "is-active" : ""}`}
+                        className={`song-queue-item ${isCurrentLive ? "is-live" : isSelectedInEditor ? "is-active" : ""}`}
                         onClick={() => {
                           const fullSong = savedSongs.find((s) => s.id === item.songId) || item;
                           handleSelectSong(fullSong, "none");
                         }}
                         title={`Click to load "${item.title}" into Program`}
-                        style={{
-                          padding: "7px 10px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: "8px",
-                          borderLeft: isCurrentLive
-                            ? "3px solid #22c55e"
-                            : isSelectedInEditor
-                              ? "3px solid var(--primary)"
-                              : "3px solid transparent",
-                        }}
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            minWidth: 0,
-                            flex: 1,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "0.7rem",
-                              fontWeight: 700,
-                              color: isCurrentLive ? "#22c55e" : "var(--primary)",
-                              background: "rgba(99, 102, 241, 0.15)",
-                              padding: "1px 5px",
-                              borderRadius: "4px",
-                              flexShrink: 0,
-                            }}
-                          >
-                            #{idx + 1}
-                          </span>
-                          <div style={{ minWidth: 0, flex: 1 }}>
-                            <div
-                              style={{
-                                fontWeight: 600,
-                                fontSize: "0.8rem",
-                                color: isCurrentLive ? "#22c55e" : "#fff",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {item.title}
-                            </div>
-                            {item.artist && (
-                              <div
-                                style={{
-                                  fontSize: "0.7rem",
-                                  color: "var(--text-muted)",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {item.artist}
-                              </div>
-                            )}
+                        <span className="song-queue-index">
+                          {idx + 1}
+                        </span>
+
+                        <div className="song-queue-info">
+                          <div className="song-queue-title-text">
+                            {item.title}
                           </div>
+                          {hasDistinctArtist && (
+                            <div className="song-queue-artist-text">
+                              {item.artist}
+                            </div>
+                          )}
                         </div>
 
                         {/* Action buttons on queued song */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "4px",
-                            flexShrink: 0,
-                          }}
-                        >
+                        <div className="song-queue-actions">
                           {isCurrentLive && (
-                            <span
-                              style={{
-                                fontSize: "0.62rem",
-                                fontWeight: 700,
-                                color: "#22c55e",
-                                background: "rgba(34, 197, 94, 0.2)",
-                                border: "1px solid rgba(34, 197, 94, 0.5)",
-                                padding: "1px 5px",
-                                borderRadius: "4px",
-                                marginRight: "2px",
-                              }}
-                            >
+                            <span className="song-queue-live-indicator">
+                              <span className="song-queue-live-dot" />
                               LIVE
                             </span>
                           )}
                           <button
                             type="button"
+                            className="song-queue-btn play-btn"
                             onClick={(e) => {
                               e.stopPropagation();
                               const fullSong =
                                 savedSongs.find((s) => s.id === item.songId) || item;
                               handleSelectSong(fullSong, "first");
                             }}
-                            style={{
-                              background: "rgba(99, 102, 241, 0.25)",
-                              border: "1px solid rgba(99, 102, 241, 0.5)",
-                              color: "#a5b4fc",
-                              borderRadius: "4px",
-                              width: "22px",
-                              height: "22px",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              cursor: "pointer",
-                              padding: 0,
-                            }}
-                            title="Play Direct (Go Live)"
+                            title={isCurrentLive ? "Currently Live" : "Go Live Now"}
                           >
                             <Play size={10} fill="currentColor" />
                           </button>
                           {idx > 0 && (
                             <button
                               type="button"
+                              className="song-queue-btn"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 moveQueueItem(idx, idx - 1);
                               }}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: "var(--text-muted)",
-                                cursor: "pointer",
-                                padding: "2px",
-                                display: "flex",
-                              }}
                               title="Move up"
                             >
-                              <ChevronLeft
-                                size={13}
-                                style={{ transform: "rotate(90deg)" }}
-                              />
+                              <ChevronUp size={13} />
                             </button>
                           )}
                           {idx < songQueue.length - 1 && (
                             <button
                               type="button"
+                              className="song-queue-btn"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 moveQueueItem(idx, idx + 1);
                               }}
-                              style={{
-                                background: "transparent",
-                                border: "none",
-                                color: "var(--text-muted)",
-                                cursor: "pointer",
-                                padding: "2px",
-                                display: "flex",
-                              }}
                               title="Move down"
                             >
-                              <ChevronRight
-                                size={13}
-                                style={{ transform: "rotate(90deg)" }}
-                              />
+                              <ChevronDown size={13} />
                             </button>
                           )}
                           <button
                             type="button"
+                            className="song-queue-btn delete-btn"
                             onClick={(e) => {
                               e.stopPropagation();
                               removeFromSongQueue(item.id);
-                            }}
-                            style={{
-                              background: "transparent",
-                              border: "none",
-                              color: "var(--text-muted)",
-                              cursor: "pointer",
-                              padding: "2px",
-                              display: "flex",
                             }}
                             title="Remove from queue"
                           >

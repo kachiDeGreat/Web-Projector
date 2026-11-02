@@ -11,6 +11,39 @@ const getRgba = (hex: string, opacity: number) => {
   return `rgba(${r}, ${g}, ${b}, ${opacity / 100})`;
 };
 
+export const calculateAutoFitBibleFontSize = (text: string): number => {
+  const len = (text || "").trim().length;
+
+  let verseSize: number;
+  if (len <= 45) {
+    // Very short scripture: e.g. "Jesus wept." (11 chars) or "Pray without ceasing."
+    verseSize = 7.2;
+  } else if (len <= 85) {
+    // Short scripture: ~45-85 chars
+    verseSize = 6.4 - ((len - 45) / 40) * 0.9;
+  } else if (len <= 130) {
+    // Medium-short scripture: e.g. Matthew 28:18 (101 chars)
+    verseSize = 5.5 - ((len - 85) / 45) * 0.8;
+  } else if (len <= 190) {
+    // Medium scripture: e.g. John 3:16 (143 chars)
+    verseSize = 4.7 - ((len - 130) / 60) * 0.7;
+  } else if (len <= 270) {
+    // Medium-long scripture: ~190-270 chars
+    verseSize = 4.0 - ((len - 190) / 80) * 0.7;
+  } else if (len <= 380) {
+    // Long scripture: e.g. Revelation 20:4 (374 chars)
+    verseSize = 3.3 - ((len - 270) / 110) * 0.6;
+  } else if (len <= 500) {
+    // Very long scripture: ~380-500 chars
+    verseSize = 2.7 - ((len - 380) / 120) * 0.45;
+  } else {
+    // Exceptionally long passage
+    verseSize = Math.max(1.85, 2.25 - ((len - 500) / 250) * 0.4);
+  }
+
+  return Number(verseSize.toFixed(2));
+};
+
 const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
   const { liveState } = useLive();
 
@@ -184,10 +217,40 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
 
     const themeClass = state.layout === "LT" && state.type === "bible" && state.bibleLowerThirdStyle !== "none" ? state.bibleLowerThirdStyle : "";
 
+    const shadowIntensity = state.shadowIntensity ?? 80;
     const shadowVal =
-      isBgTransparent && state.shadowIntensity > 0
-        ? `0 ${state.shadowIntensity * 0.015}cqi ${state.shadowIntensity * 0.03}cqi rgba(0,0,0,${Math.min(state.shadowIntensity * 0.012, 1)}), 0 ${state.shadowIntensity * 0.005}cqi ${state.shadowIntensity * 0.01}cqi rgba(0,0,0,${Math.min(state.shadowIntensity * 0.008, 1)})`
+      shadowIntensity > 0
+        ? `0 ${shadowIntensity * 0.015}cqi ${shadowIntensity * 0.03}cqi rgba(0,0,0,${Math.min(shadowIntensity * 0.012, 1)}), 0 ${shadowIntensity * 0.005}cqi ${shadowIntensity * 0.01}cqi rgba(0,0,0,${Math.min(shadowIntensity * 0.008, 1)})`
         : "none";
+
+    const hasOutline = (state.enableTextOutline ?? true) && (state.textOutlineWidth ?? 0.12) > 0;
+    const outlineWidthCqi = (state.textOutlineWidth ?? 0.12) * (state.layout === "LT" ? 0.65 : 1);
+    const outlineColor = state.textOutlineColor || "#000000";
+
+    const outlineStyle: React.CSSProperties = hasOutline
+      ? {
+          WebkitTextStroke: `${outlineWidthCqi}cqi ${outlineColor}`,
+          paintOrder: "stroke fill",
+        }
+      : {};
+
+    // Dynamic Font Resizing / Auto-fit for Bible verse in Fullscreen Middle mode
+    const isAutoFit =
+      state.type === "bible" &&
+      state.layout === "FS" &&
+      state.verticalAlign === "middle" &&
+      (state.bibleAutoFitFontSize ?? true);
+
+    const autoVerseSize = isAutoFit
+      ? calculateAutoFitBibleFontSize(state.text)
+      : state.bibleFontSize ?? 4.5;
+
+    const computedVerseFontSize = isAutoFit
+      ? `${autoVerseSize}cqi`
+      : `${(state.type === "bible" ? state.bibleFontSize : state.songFontSize) * (state.layout === "LT" ? 0.6 : 1)}cqi`;
+
+    // Reference font size remains static / constant according to user's refFontSize setting
+    const computedRefFontSize = `${state.refFontSize * (state.layout === "LT" ? 0.6 : 1)}cqi`;
 
     const transition = { duration: 0.8, ease: [0.16, 1, 0.3, 1] };
     
@@ -297,6 +360,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
           style={{
             width: state.layout === "LT" ? `${state.lowerThirdWidth}%` : "100%",
             height: state.layout === "FS" ? "100%" : "auto",
+            maxHeight: state.layout === "FS" && state.verticalAlign === "middle" ? "92%" : "auto",
             padding:
               state.layout === "FS"
                 ? state.transparentBackground
@@ -341,7 +405,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
                   width: "100%",
                   textAlign: state.refAlign as any,
                   color: state.refColor,
-                  fontSize: `${state.refFontSize * (state.layout === "LT" ? 0.6 : 1)}cqi`,
+                  fontSize: computedRefFontSize,
                   fontFamily: state.fontFamily,
                   margin: 0,
                   marginBottom: "0.5cqi",
@@ -350,6 +414,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
                       ? (state.refTextTransform as any)
                       : undefined,
                   fontWeight: state.refFontWeight,
+                  ...outlineStyle,
                 }}
               >
                 {state.title}
@@ -362,10 +427,10 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
               width: "100%",
               textAlign: state.horizontalAlign as any,
               color: state.textColor,
-              fontSize: `${(state.type === "bible" ? state.bibleFontSize : state.songFontSize) * (state.layout === "LT" ? 0.6 : 1)}cqi`,
+              fontSize: computedVerseFontSize,
               fontFamily: state.fontFamily,
               whiteSpace: "pre-wrap",
-              lineHeight: 1.3,
+              lineHeight: 1.28,
               textTransform:
                 state.type === "song"
                   ? state.songTextTransform !== "none"
@@ -378,6 +443,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
                 state.type === "song"
                   ? state.songFontWeight
                   : state.bibleFontWeight,
+              ...outlineStyle,
             }}
           >
             {state.type === "song" && state.enableKineticTypography ? (
@@ -402,7 +468,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
                   width: "100%",
                   textAlign: state.refAlign as any,
                   color: state.refColor,
-                  fontSize: `${state.refFontSize * (state.layout === "LT" ? 0.6 : 1)}cqi`,
+                  fontSize: computedRefFontSize,
                   fontFamily: state.fontFamily,
                   margin: 0,
                   marginTop: "0.5cqi",
@@ -411,6 +477,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
                       ? (state.refTextTransform as any)
                       : undefined,
                   fontWeight: state.refFontWeight,
+                  ...outlineStyle,
                 }}
               >
                 {state.title}

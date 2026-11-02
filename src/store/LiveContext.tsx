@@ -23,6 +23,7 @@ export interface BibleSettings {
   refFontWeight: string;
   refColor: string;
   animation: 'none' | 'fade' | 'slide' | 'zoom';
+  bibleAutoFitFontSize: boolean;
 }
 
 export interface SongSettings {
@@ -49,12 +50,16 @@ export interface GlobalDisplaySettings {
   backgroundColor: string;
   backgroundUrl: string;
   backgroundDim?: number;
+  enableTextOutline: boolean;
+  textOutlineWidth: number;
+  textOutlineColor: string;
 }
 
 export interface LiveState extends GlobalDisplaySettings, BibleSettings, SongSettings {
   type: 'bible' | 'song' | 'clear';
   title: string;
   text: string;
+  verseNumber?: number;
 }
 
 export const defaultBibleSettings: BibleSettings = {
@@ -78,6 +83,7 @@ export const defaultBibleSettings: BibleSettings = {
   refFontWeight: 'bold',
   refColor: '#FFFFFF',
   animation: 'none',
+  bibleAutoFitFontSize: true,
 };
 
 export const defaultSongSettings: SongSettings = {
@@ -104,11 +110,14 @@ export const defaultGlobalSettings: GlobalDisplaySettings = {
   backgroundColor: '#050505',
   backgroundUrl: '',
   backgroundDim: 25,
+  enableTextOutline: true,
+  textOutlineWidth: 0.12,
+  textOutlineColor: '#000000',
 };
 
 export const buildLiveState = (
   type: 'bible' | 'song' | 'clear',
-  content: { title: string; text: string },
+  content: { title: string; text: string; verseNumber?: number },
   global: GlobalDisplaySettings,
   bible: BibleSettings,
   song: SongSettings
@@ -121,6 +130,7 @@ export const buildLiveState = (
       type: 'bible',
       title: content.title,
       text: content.text,
+      verseNumber: content.verseNumber,
       enableKineticTypography: false,
     };
   }
@@ -174,6 +184,7 @@ const getStoredBibleSettings = (): BibleSettings => {
         refFontWeight: parsed.refFontWeight || defaultBibleSettings.refFontWeight,
         refColor: parsed.refColor || defaultBibleSettings.refColor,
         animation: parsed.animation || defaultBibleSettings.animation,
+        bibleAutoFitFontSize: parsed.bibleAutoFitFontSize ?? defaultBibleSettings.bibleAutoFitFontSize,
       };
     }
   } catch (e) {
@@ -210,6 +221,9 @@ const getStoredGlobalSettings = (): GlobalDisplaySettings => {
         backgroundColor: parsed.backgroundColor || defaultGlobalSettings.backgroundColor,
         backgroundUrl: parsed.backgroundUrl || defaultGlobalSettings.backgroundUrl,
         backgroundDim: parsed.backgroundDim ?? defaultGlobalSettings.backgroundDim,
+        enableTextOutline: parsed.enableTextOutline ?? defaultGlobalSettings.enableTextOutline,
+        textOutlineWidth: parsed.textOutlineWidth ?? defaultGlobalSettings.textOutlineWidth,
+        textOutlineColor: parsed.textOutlineColor || defaultGlobalSettings.textOutlineColor,
       };
     }
   } catch (e) {
@@ -227,7 +241,7 @@ interface LiveContextType {
   updateDefaultSongSettings: (settings: Partial<SongSettings>) => void;
   globalSettings: GlobalDisplaySettings;
   updateGlobalSettings: (settings: Partial<GlobalDisplaySettings>) => void;
-  projectBible: (title: string, text: string) => void;
+  projectBible: (title: string, text: string, verseNumber?: number) => void;
   projectSong: (title: string, text: string, songSettings?: Partial<SongSettings>) => void;
   projectLive: (newState: Partial<LiveState>) => void;
   clearLive: () => void;
@@ -354,8 +368,13 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const projectBible = (title: string, text: string) => {
-    const nextLive = buildLiveState('bible', { title, text }, globalSettings, bibleSettings, defaultSongSettingsState);
+  const projectBible = (title: string, text: string, verseNumber?: number) => {
+    let resolvedVerseNum = verseNumber;
+    if (resolvedVerseNum === undefined && title) {
+      const match = title.match(/:(\d+)/);
+      if (match) resolvedVerseNum = parseInt(match[1], 10);
+    }
+    const nextLive = buildLiveState('bible', { title, text, verseNumber: resolvedVerseNum }, globalSettings, bibleSettings, defaultSongSettingsState);
     setLiveState(nextLive);
     updateLiveState(nextLive);
   };

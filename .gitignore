@@ -12,6 +12,7 @@ dist
 dist-ssr
 public
 release
+scratch
 *.local
 
 # Editor directories and files
