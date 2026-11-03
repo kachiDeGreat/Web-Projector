@@ -320,6 +320,8 @@ export default function ControlPanel() {
   const [bootProgress, setBootProgress] = useState<number>(20);
   const [isSongsLoading, setIsSongsLoading] = useState<boolean>(true);
   const [isUploadingBible, setIsUploadingBible] = useState<boolean>(false);
+  const [isProjectorActive, setIsProjectorActive] = useState<boolean>(false);
+  const [hasExternalMonitor, setHasExternalMonitor] = useState<boolean>(false);
 
   const [bibleLoadingProgress, setBibleLoadingProgress] = useState<{
     current: number;
@@ -794,11 +796,21 @@ export default function ControlPanel() {
     // 1. Electron Desktop Native Multi-Display Routing
     if ((window as any).electronAPI?.launchProjector) {
       try {
+        if (isProjectorActive && (window as any).electronAPI?.closeProjector) {
+          await (window as any).electronAPI.closeProjector();
+          setIsProjectorActive(false);
+          toast.success("Projector closed.");
+          return;
+        }
+
         const res = await (window as any).electronAPI.launchProjector();
+        setIsProjectorActive(true);
         if (res?.isExternal) {
-          toast.success("Projector launched fullscreen on extended display!");
+          setHasExternalMonitor(true);
+          toast.success("Projector launched fullscreen on external display (blank screen ready)!");
         } else {
-          toast.success("Projector preview window launched (single screen mode).");
+          setHasExternalMonitor(false);
+          toast.success("Projector preview window launched (connect HDMI to project fullscreen).");
         }
         return;
       } catch (err) {
@@ -824,6 +836,7 @@ export default function ControlPanel() {
         );
 
         if (win) {
+          setIsProjectorActive(true);
           toast.success("Projector launched on extended display!");
           return;
         }
@@ -834,10 +847,29 @@ export default function ControlPanel() {
 
     // 3. Fallback if API not supported or popup blocked
     window.open("/output?autoFullscreen=true", "_blank");
+    setIsProjectorActive(true);
     toast.success("Projector opened in new tab.");
   };
 
   useEffect(() => {
+    if ((window as any).electronAPI) {
+      const api = (window as any).electronAPI;
+      api.getDisplays?.().then((info: any) => {
+        if (info) {
+          setIsProjectorActive(Boolean(info.isProjectorOpen));
+          setHasExternalMonitor(Boolean(info.hasExternal));
+        }
+      }).catch(() => {});
+
+      api.onProjectorClosed?.(() => {
+        setIsProjectorActive(false);
+      });
+
+      api.onDisplaysChanged?.((info: any) => {
+        setHasExternalMonitor(Boolean(info?.hasExternal));
+      });
+    }
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         (e.ctrlKey && e.altKey && e.key.toLowerCase() === "p") ||
@@ -849,7 +881,7 @@ export default function ControlPanel() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [isProjectorActive]);
 
   useEffect(() => {
     const initData = async () => {
@@ -5186,7 +5218,13 @@ export default function ControlPanel() {
           </div>
           <button
             className="btn btn-secondary"
-            title="Launch Projector (Ctrl+Alt+P / Ctrl+Shift+P)"
+            title={
+              isProjectorActive
+                ? (hasExternalMonitor
+                    ? "Projector is live on external screen (Click to close)"
+                    : "Projector preview is open (Click to close)")
+                : "Launch Projector on external screen (Ctrl+Alt+P / Ctrl+Shift+P)"
+            }
             onClick={launchProjector}
             style={{
               height: "34px",
@@ -5197,13 +5235,32 @@ export default function ControlPanel() {
               fontSize: "0.8rem",
               fontWeight: 600,
               borderRadius: "6px",
-              color: "var(--primary)",
-              borderColor: "rgba(99, 102, 241, 0.4)",
-              background: "rgba(99, 102, 241, 0.08)",
+              color: isProjectorActive ? "#10b981" : "var(--primary)",
+              borderColor: isProjectorActive ? "rgba(16, 185, 129, 0.4)" : "rgba(99, 102, 241, 0.4)",
+              background: isProjectorActive ? "rgba(16, 185, 129, 0.12)" : "rgba(99, 102, 241, 0.08)",
+              transition: "all 0.2s ease",
             }}
           >
-            <MonitorPlay size={15} />
-            <span>Launch Projector</span>
+            {isProjectorActive ? (
+              <>
+                <span
+                  style={{
+                    width: "8px",
+                    height: "8px",
+                    borderRadius: "50%",
+                    backgroundColor: "#10b981",
+                    boxShadow: "0 0 8px #10b981",
+                    display: "inline-block",
+                  }}
+                />
+                <span>{hasExternalMonitor ? "Projector Live (HDMI)" : "Projector Live"}</span>
+              </>
+            ) : (
+              <>
+                <MonitorPlay size={15} />
+                <span>Launch Projector</span>
+              </>
+            )}
           </button>
           <button
             className="icon-btn"

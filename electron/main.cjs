@@ -3,6 +3,12 @@ const path = require('path');
 const fs = require('fs');
 const { startServer } = require('./server.cjs');
 
+// High performance stage projection switches
+// Prevent Chromium from throttling rendering, timers, or network when windows are in background or occluded by OBS
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+
 // Linux environment integration
 if (process.platform === 'linux') {
   app.commandLine.appendSwitch('no-sandbox');
@@ -12,15 +18,30 @@ let mainWindow = null;
 let projectorWindow = null;
 let serverInstance = null;
 let serverPort = 5173;
+let latestLiveState = null;
 
 const isPackaged = app.isPackaged;
-const baseDir = isPackaged
+const appDir = app.getAppPath();
+const resourcesDir = isPackaged
   ? process.resourcesPath
   : path.resolve(__dirname, '..');
+const baseDir = resourcesDir;
 const userDataDir = app.getPath('userData');
-const appIcon = process.platform === 'win32'
-  ? path.join(__dirname, '../build/icon.ico')
-  : path.join(__dirname, '../build/icon.png');
+
+function resolveAppIcon() {
+  const iconName = process.platform === 'win32' ? 'icon.ico' : 'icon.png';
+  const candidates = [
+    path.join(resourcesDir, 'build', iconName),
+    path.join(appDir, 'build', iconName),
+    path.join(__dirname, '..', 'build', iconName),
+    path.join(process.cwd(), 'build', iconName),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return candidates[2];
+}
+const appIcon = resolveAppIcon();
 
 // Ensure starter BIBLE & songs exist in userData
 function ensureStarterAssets() {
@@ -28,11 +49,20 @@ function ensureStarterAssets() {
   if (!fs.existsSync(userSongsDir)) {
     try {
       fs.mkdirSync(userSongsDir, { recursive: true });
-      const srcSongs = path.join(baseDir, 'songs');
-      if (fs.existsSync(srcSongs)) {
-        fs.readdirSync(srcSongs).forEach((f) => {
-          fs.copyFileSync(path.join(srcSongs, f), path.join(userSongsDir, f));
-        });
+      const songCandidates = [
+        path.join(resourcesDir, 'songs'),
+        path.join(appDir, 'songs'),
+        path.join(__dirname, '..', 'songs'),
+      ];
+      for (const srcSongs of songCandidates) {
+        if (fs.existsSync(srcSongs)) {
+          fs.readdirSync(srcSongs).forEach((f) => {
+            if (f.toLowerCase().endsWith('.txt')) {
+              fs.copyFileSync(path.join(srcSongs, f), path.join(userSongsDir, f));
+            }
+          });
+          break;
+        }
       }
     } catch (e) {
       console.error('Error copying starter songs:', e);
@@ -43,13 +73,20 @@ function ensureStarterAssets() {
   if (!fs.existsSync(userBiblesDir)) {
     try {
       fs.mkdirSync(userBiblesDir, { recursive: true });
-      const srcBibles = path.join(baseDir, 'BIBLE');
-      if (fs.existsSync(srcBibles)) {
-        fs.readdirSync(srcBibles).forEach((f) => {
-          if (f.toLowerCase().endsWith('.xml')) {
-            fs.copyFileSync(path.join(srcBibles, f), path.join(userBiblesDir, f));
-          }
-        });
+      const bibleCandidates = [
+        path.join(resourcesDir, 'BIBLE'),
+        path.join(appDir, 'BIBLE'),
+        path.join(__dirname, '..', 'BIBLE'),
+      ];
+      for (const srcBibles of bibleCandidates) {
+        if (fs.existsSync(srcBibles)) {
+          fs.readdirSync(srcBibles).forEach((f) => {
+            if (f.toLowerCase().endsWith('.xml')) {
+              fs.copyFileSync(path.join(srcBibles, f), path.join(userBiblesDir, f));
+            }
+          });
+          break;
+        }
       }
     } catch (e) {
       console.error('Error copying starter bibles:', e);
@@ -59,9 +96,16 @@ function ensureStarterAssets() {
   const userSettingsFile = path.join(userDataDir, 'super_settings.json');
   if (!fs.existsSync(userSettingsFile)) {
     try {
-      const srcSettings = path.join(baseDir, 'super_settings.json');
-      if (fs.existsSync(srcSettings)) {
-        fs.copyFileSync(srcSettings, userSettingsFile);
+      const settingsCandidates = [
+        path.join(resourcesDir, 'super_settings.json'),
+        path.join(appDir, 'super_settings.json'),
+        path.join(__dirname, '..', 'super_settings.json'),
+      ];
+      for (const srcSettings of settingsCandidates) {
+        if (fs.existsSync(srcSettings)) {
+          fs.copyFileSync(srcSettings, userSettingsFile);
+          break;
+        }
       }
     } catch (e) {
       console.error('Error copying starter super_settings.json:', e);
@@ -249,6 +293,7 @@ function openOrUpdateProjector() {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
   });
 
@@ -341,10 +386,12 @@ function createMainWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
+      backgroundThrottling: false,
     },
   });
 
   mainWindow.setMenu(null);
+  mainWindow.maximize();
 
   const mainUrl = `http://localhost:${serverPort}/`;
   loadWithRetry(mainWindow, mainUrl);
@@ -376,6 +423,8 @@ if (!gotTheLock) {
     try {
       const started = await startServer({
         port: 5173,
+        appDir: appDir,
+        resourcesDir: resourcesDir,
         baseDir: baseDir,
         userDataDir: userDataDir,
       });
@@ -387,13 +436,10 @@ if (!gotTheLock) {
 
     createMainWindow();
 
-    // The moment the app launches, if an external display is connected,
-    // immediately open the projector window on the external screen in black
-    // (Standard stage/church projection behavior like VideoPsalm / EasyWorship)
-    setTimeout(() => {
-      const external = findExternalDisplay();
-      if (external && (!projectorWindow || projectorWindow.isDestroyed())) {
-        openOrUpdateProjector();
+    // Screen listeners for automatic external display migration
+    screen.on('display-added', (_event, newDisplay) => {
+      if (projectorWindow && !projectorWindow.isDestroyed()) {
+        applyExternalPlacement(projectorWindow, newDisplay);
         if (mainWindow && !mainWindow.isDestroyed()) {
           setTimeout(() => {
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -402,42 +448,59 @@ if (!gotTheLock) {
           }, 300);
         }
       }
-    }, 400);
-
-    // Screen listeners for automatic external display migration
-    screen.on('display-added', (_event, newDisplay) => {
-      if (!projectorWindow || projectorWindow.isDestroyed()) {
-        openOrUpdateProjector();
-      } else {
-        applyExternalPlacement(projectorWindow, newDisplay);
-      }
       if (mainWindow && !mainWindow.isDestroyed()) {
-        setTimeout(() => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.focus();
-          }
-        }, 300);
+        mainWindow.webContents.send('displays-changed', {
+          hasExternal: true,
+          externalDisplay: newDisplay,
+        });
       }
     });
 
     screen.on('display-removed', () => {
       if (projectorWindow && !projectorWindow.isDestroyed()) {
-        const primary = screen.getPrimaryDisplay();
-        if (projectorWindow.isFullScreen()) {
-          projectorWindow.setFullScreen(false);
+        const external = findExternalDisplay();
+        if (external) {
+          applyExternalPlacement(projectorWindow, external);
+        } else {
+          const primary = screen.getPrimaryDisplay();
+          if (projectorWindow.isFullScreen()) {
+            projectorWindow.setFullScreen(false);
+          }
+          projectorWindow.setAlwaysOnTop(false);
+          projectorWindow.setSkipTaskbar(false);
+          projectorWindow.setBounds({
+            x: primary.bounds.x + 80,
+            y: primary.bounds.y + 80,
+            width: 1280,
+            height: 720,
+          });
         }
-        projectorWindow.setAlwaysOnTop(false);
-        projectorWindow.setSkipTaskbar(false);
-        projectorWindow.setBounds({
-          x: primary.bounds.x + 80,
-          y: primary.bounds.y + 80,
-          width: 1280,
-          height: 720,
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('displays-changed', {
+          hasExternal: Boolean(findExternalDisplay()),
+          externalDisplay: findExternalDisplay(),
         });
       }
     });
 
     // IPC handlers
+    ipcMain.on('live-state-update', (_event, state) => {
+      latestLiveState = state;
+      // Ultra-fast 0ms IPC relay directly to projector window
+      if (projectorWindow && !projectorWindow.isDestroyed()) {
+        projectorWindow.webContents.send('live-state-update', state);
+      }
+      // Also forward to mainWindow if update originated from secondary window
+      if (mainWindow && !mainWindow.isDestroyed() && _event.sender !== mainWindow.webContents) {
+        mainWindow.webContents.send('live-state-update', state);
+      }
+    });
+
+    ipcMain.handle('get-latest-live-state', () => {
+      return latestLiveState;
+    });
+
     ipcMain.handle('launch-projector', async () => {
       return openOrUpdateProjector();
     });

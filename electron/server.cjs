@@ -4,12 +4,18 @@ const path = require('path');
 const os = require('os');
 const { IncomingForm } = require('formidable');
 
-function startServer({ port = 5173, baseDir = process.cwd(), userDataDir = null } = {}) {
+function startServer({
+  port = 5173,
+  baseDir = process.cwd(),
+  appDir = null,
+  resourcesDir = null,
+  userDataDir = null,
+} = {}) {
   let sseClients = [];
   let currentLiveState = null;
 
   // Periodic SSE ping to keep connections alive
-  setInterval(() => {
+  const pingTimer = setInterval(() => {
     sseClients.forEach((client) => {
       try {
         client.write('event: ping\ndata: {}\n\n');
@@ -17,15 +23,13 @@ function startServer({ port = 5173, baseDir = process.cwd(), userDataDir = null 
       } catch (e) {}
     });
   }, 5000);
+  if (pingTimer.unref) pingTimer.unref();
 
-  // Setup directories
-  const storageRoot = userDataDir || baseDir;
+  // Setup directories with robust fallbacks
+  const storageRoot = userDataDir || resourcesDir || baseDir;
   const uploadsDir = path.join(storageRoot, 'public', 'uploads');
   const songsDir = path.join(storageRoot, 'songs');
   const biblesDir = path.join(storageRoot, 'BIBLE');
-  const fallbackBiblesDir = path.join(baseDir, 'BIBLE');
-  const backgroundsDir = path.join(baseDir, 'public', 'backgrounds');
-  const distDir = path.join(baseDir, 'dist');
 
   [uploadsDir, songsDir, biblesDir].forEach((dir) => {
     if (!fs.existsSync(dir)) {
@@ -35,8 +39,69 @@ function startServer({ port = 5173, baseDir = process.cwd(), userDataDir = null 
     }
   });
 
+  const findFallbackBiblesDir = () => {
+    const list = [
+      resourcesDir ? path.join(resourcesDir, 'BIBLE') : null,
+      appDir ? path.join(appDir, 'BIBLE') : null,
+      path.join(baseDir, 'BIBLE'),
+      path.join(__dirname, '..', 'BIBLE'),
+    ].filter(Boolean);
+    for (const d of list) {
+      if (fs.existsSync(d)) return d;
+    }
+    return list[0];
+  };
+  const fallbackBiblesDir = findFallbackBiblesDir();
+
+  const findBackgroundsDir = () => {
+    const list = [
+      resourcesDir ? path.join(resourcesDir, 'public', 'backgrounds') : null,
+      appDir ? path.join(appDir, 'public', 'backgrounds') : null,
+      path.join(baseDir, 'public', 'backgrounds'),
+      path.join(__dirname, '..', 'public', 'backgrounds'),
+    ].filter(Boolean);
+    for (const d of list) {
+      if (fs.existsSync(d)) return d;
+    }
+    return list[0];
+  };
+  const backgroundsDir = findBackgroundsDir();
+
   const settingsFilePath = path.join(storageRoot, 'super_settings.json');
-  const fallbackSettingsPath = path.join(baseDir, 'super_settings.json');
+  const findFallbackSettingsPath = () => {
+    const list = [
+      resourcesDir ? path.join(resourcesDir, 'super_settings.json') : null,
+      appDir ? path.join(appDir, 'super_settings.json') : null,
+      path.join(baseDir, 'super_settings.json'),
+      path.join(__dirname, '..', 'super_settings.json'),
+    ].filter(Boolean);
+    for (const p of list) {
+      if (fs.existsSync(p)) return p;
+    }
+    return list[0];
+  };
+  const fallbackSettingsPath = findFallbackSettingsPath();
+
+  const findDistDir = () => {
+    const list = [
+      resourcesDir ? path.join(resourcesDir, 'dist') : null,
+      appDir ? path.join(appDir, 'dist') : null,
+      path.join(baseDir, 'dist'),
+      path.join(__dirname, '..', 'dist'),
+      path.join(process.cwd(), 'dist'),
+    ].filter(Boolean);
+    for (const d of list) {
+      try {
+        if (fs.existsSync(d) && fs.existsSync(path.join(d, 'index.html'))) {
+          console.log('[Server] Verified dist directory:', d);
+          return d;
+        }
+      } catch (e) {}
+    }
+    console.error('[Server] WARNING: Could not find dist directory with index.html! Checked:', list);
+    return list[0] || path.join(process.cwd(), 'dist');
+  };
+  const distDir = findDistDir();
 
   const readSuperSettings = () => {
     try {
@@ -184,13 +249,34 @@ function startServer({ port = 5173, baseDir = process.cwd(), userDataDir = null 
 
     // 1. /api/state
     if (pathname === '/api/state') {
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': '*',
+        });
+        res.end();
+        return;
+      }
+
       if (req.method === 'GET') {
+        if (req.socket) {
+          try {
+            req.socket.setNoDelay(true);
+            req.socket.setKeepAlive(true, 1000);
+          } catch (e) {}
+        }
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive',
           'X-Accel-Buffering': 'no',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': '*',
         });
+        if (typeof res.flushHeaders === 'function') {
+          res.flushHeaders();
+        }
         sseClients.push(res);
         if (currentLiveState) {
           res.write(`data: ${JSON.stringify(currentLiveState)}\n\n`);
@@ -209,16 +295,27 @@ function startServer({ port = 5173, baseDir = process.cwd(), userDataDir = null 
         req.on('end', () => {
           try {
             currentLiveState = JSON.parse(body);
-            sseClients.forEach((client) => {
+            const packet = `data: ${JSON.stringify(currentLiveState)}\n\n`;
+            for (let i = 0; i < sseClients.length; i++) {
+              const client = sseClients[i];
               try {
-                client.write(`data: ${JSON.stringify(currentLiveState)}\n\n`);
-                if (client.flush) client.flush();
+                if (client.socket && !client.socket.destroyed && client.socket.setNoDelay) {
+                  client.socket.setNoDelay(true);
+                }
+                client.write(packet);
+                if (typeof client.flush === 'function') client.flush();
               } catch (e) {}
+            }
+            res.writeHead(200, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
             });
-            res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: true }));
           } catch (e) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.writeHead(400, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            });
             res.end(JSON.stringify({ error: 'Invalid JSON' }));
           }
         });
@@ -517,62 +614,89 @@ function startServer({ port = 5173, baseDir = process.cwd(), userDataDir = null 
     // 10. Static files: /uploads/...
     if (pathname.startsWith('/uploads/')) {
       const fileName = path.basename(pathname);
-      const filePath = path.join(uploadsDir, fileName);
-      const fallbackPath = path.join(baseDir, 'public', 'uploads', fileName);
-      if (fs.existsSync(filePath)) {
-        const ext = path.extname(filePath).toLowerCase();
-        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
-        fs.createReadStream(filePath).pipe(res);
-        return;
-      } else if (fs.existsSync(fallbackPath)) {
-        const ext = path.extname(fallbackPath).toLowerCase();
-        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
-        fs.createReadStream(fallbackPath).pipe(res);
-        return;
+      const candidates = [
+        path.join(uploadsDir, fileName),
+        path.join(baseDir, 'public', 'uploads', fileName),
+        path.join(distDir, 'uploads', fileName),
+      ];
+      for (const filePath of candidates) {
+        if (fs.existsSync(filePath)) {
+          const ext = path.extname(filePath).toLowerCase();
+          res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
+          fs.createReadStream(filePath).pipe(res);
+          return;
+        }
       }
     }
 
     // 11. Static files: /backgrounds/...
     if (pathname.startsWith('/backgrounds/')) {
       const fileName = path.basename(pathname);
-      const filePath = path.join(backgroundsDir, fileName);
-      const userBgPath = path.join(storageRoot, 'public', 'backgrounds', fileName);
-      if (fs.existsSync(filePath)) {
-        const ext = path.extname(filePath).toLowerCase();
-        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
-        fs.createReadStream(filePath).pipe(res);
-        return;
-      } else if (fs.existsSync(userBgPath)) {
-        const ext = path.extname(userBgPath).toLowerCase();
-        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
-        fs.createReadStream(userBgPath).pipe(res);
-        return;
+      const candidates = [
+        path.join(backgroundsDir, fileName),
+        path.join(storageRoot, 'public', 'backgrounds', fileName),
+        path.join(distDir, 'backgrounds', fileName),
+        resourcesDir ? path.join(resourcesDir, 'public', 'backgrounds', fileName) : null,
+      ].filter(Boolean);
+      for (const filePath of candidates) {
+        if (fs.existsSync(filePath)) {
+          const ext = path.extname(filePath).toLowerCase();
+          res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
+          fs.createReadStream(filePath).pipe(res);
+          return;
+        }
       }
     }
 
     // 12. Static files from dist/ (built app)
-    if (fs.existsSync(distDir)) {
-      let relativePath = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
-      let filePath = path.join(distDir, relativePath);
+    if (distDir && fs.existsSync(distDir)) {
+      let cleanPath = pathname;
+      if (cleanPath === '/' || cleanPath === '') {
+        cleanPath = '/index.html';
+      }
+      let relativePath = cleanPath.replace(/^\//, '');
+      if (relativePath.includes('?')) {
+        relativePath = relativePath.split('?')[0];
+      }
+      const safeRelativePath = path.normalize(relativePath).replace(/^(\.\.[\/\\])+/, '');
+      const filePath = path.join(distDir, safeRelativePath);
 
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         const ext = path.extname(filePath).toLowerCase();
-        res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
-        fs.createReadStream(filePath).pipe(res);
-        return;
+        try {
+          const content = fs.readFileSync(filePath);
+          res.writeHead(200, {
+            'Content-Type': MIME_TYPES[ext] || 'application/octet-stream',
+            'Content-Length': content.length,
+            'Cache-Control': ext === '.html' ? 'no-cache, no-store, must-revalidate' : 'public, max-age=31536000',
+          });
+          res.end(content);
+          return;
+        } catch (readErr) {
+          console.error(`[Server] Error reading ${filePath}:`, readErr);
+        }
       }
 
-      // SPA fallback to index.html for client-side routing (e.g. /output, /dashboard)
+      // SPA fallback to index.html for client-side routing (e.g. /output, /dashboard, /)
       const indexPath = path.join(distDir, 'index.html');
       if (fs.existsSync(indexPath)) {
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        fs.createReadStream(indexPath).pipe(res);
-        return;
+        try {
+          const htmlContent = fs.readFileSync(indexPath);
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Length': htmlContent.length,
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          });
+          res.end(htmlContent);
+          return;
+        } catch (readErr) {
+          console.error(`[Server] Error reading index.html:`, readErr);
+        }
       }
     }
 
     res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not found');
+    res.end('Not found: ' + pathname);
   });
 
   return new Promise((resolve, reject) => {

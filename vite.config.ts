@@ -41,13 +41,30 @@ function localMediaServer() {
       });
 
       server.middlewares.use('/api/state', (req, res, next) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers': '*',
+          });
+          res.end();
+          return;
+        }
+
         if (req.method === 'GET') {
+          if (req.socket) {
+            try {
+              req.socket.setNoDelay(true);
+              req.socket.setKeepAlive(true, 1000);
+            } catch (e) {}
+          }
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
             'X-Accel-Buffering': 'no',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Headers': '*',
           });
           if (res.flushHeaders) {
             res.flushHeaders();
@@ -73,17 +90,25 @@ function localMediaServer() {
           req.on('end', () => {
             try {
               currentLiveState = JSON.parse(body);
+              const packet = `data: ${JSON.stringify(currentLiveState)}\n\n`;
               sseClients.forEach(client => {
-                client.write(`data: ${JSON.stringify(currentLiveState)}\n\n`);
-                if ((client as any).flush) {
-                  (client as any).flush();
-                }
+                try {
+                  if (client.socket && !client.socket.destroyed && client.socket.setNoDelay) {
+                    client.socket.setNoDelay(true);
+                  }
+                  client.write(packet);
+                  if ((client as any).flush) {
+                    (client as any).flush();
+                  }
+                } catch (e) {}
               });
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
               res.end(JSON.stringify({ success: true }));
             } catch (e) {
               res.statusCode = 400;
+              res.setHeader('Access-Control-Allow-Origin', '*');
               res.end(JSON.stringify({ error: 'Invalid JSON' }));
             }
           });

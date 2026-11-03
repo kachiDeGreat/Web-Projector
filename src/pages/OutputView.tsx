@@ -252,7 +252,9 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
     // Reference font size remains static / constant according to user's refFontSize setting
     const computedRefFontSize = `${state.refFontSize * (state.layout === "LT" ? 0.6 : 1)}cqi`;
 
-    const transition = { duration: 0.8, ease: [0.16, 1, 0.3, 1] };
+    // Fast snappy transition duration (220ms for fade, 300ms for slide/zoom) to ensure live responsiveness
+    const animDuration = state.animation === "fade" ? 0.22 : 0.3;
+    const transition = { duration: animDuration, ease: [0.16, 1, 0.3, 1] };
     
     let variants = {};
     if (isKinetic) {
@@ -311,15 +313,15 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
       }
     } else if (state.animation === "zoom") {
       variants = {
-        initial: { opacity: 0, scale: 0.9, filter: "blur(6px)" },
+        initial: { opacity: 0, scale: 0.95, filter: "blur(4px)" },
         animate: { opacity: 1, scale: 1, filter: "blur(0px)", transition },
-        exit: { opacity: 0, scale: 1.1, filter: "blur(6px)", transition }
+        exit: { opacity: 0, scale: 1.05, filter: "blur(4px)", transition }
       };
     } else if (state.animation === "slide") {
       variants = {
-        initial: { opacity: 0, y: "4cqi", filter: "blur(4px)" },
+        initial: { opacity: 0, y: "3cqi", filter: "blur(3px)" },
         animate: { opacity: 1, y: 0, filter: "blur(0px)", transition },
-        exit: { opacity: 0, y: "-4cqi", filter: "blur(4px)", transition }
+        exit: { opacity: 0, y: "-3cqi", filter: "blur(3px)", transition }
       };
     } else if (state.animation === "fade") {
       variants = {
@@ -328,10 +330,11 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
         exit: { opacity: 0, transition }
       };
     } else {
+      // Instant switch with 0ms delay: no lingering exit animation
       variants = {
         initial: { opacity: 1 },
-        animate: { opacity: 1 },
-        exit: { opacity: 0, transition: { duration: 0.1 } }
+        animate: { opacity: 1, transition: { duration: 0 } },
+        exit: { opacity: 0, transition: { duration: 0 } }
       };
     }
 
@@ -349,6 +352,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
           inset: 0,
           background: "transparent",
           color: state.textColor || "#ffffff",
+          willChange: isKinetic || (state.animation && state.animation !== "none") ? "transform, opacity" : "auto",
         }}
         initial="initial"
         animate="animate"

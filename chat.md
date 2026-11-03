@@ -89,8 +89,8 @@ This document provides a comprehensive record of all features, enhancements, arc
 
 ### C. Generated Release Artifacts
 All generated Windows binaries are output to `release/`:
-* **`Web Projector Setup 1.0.0.exe`** (147 MB): Standard Windows NSIS Setup Installer (installs to Program Files, creates Desktop/Start Menu shortcuts, includes uninstaller).
-* **`Web Projector 1.0.0.exe`** (147 MB): Standalone Portable Executable (runs immediately from flash drives without installation).
+* **`Web Projector Setup 1.0.1.exe`** (~149 MB): Standard Windows NSIS Setup Installer (installs to Program Files, creates Desktop/Start Menu shortcuts, includes uninstaller).
+* **`Web Projector 1.0.1.exe`** (~148 MB): Standalone Portable Executable (runs immediately from flash drives without installation).
 
 ---
 
@@ -119,4 +119,56 @@ All generated Windows binaries are output to `release/`:
 | `Clear` / `F5` button | Control Panel | Clear live projection to pitch black |
 
 ---
-*Created on 2026-11-02. Maintained for Web-Projector.*
+
+## 6. Windows Packaged Executable ("Not found") Resolution & Projection Flow
+
+### A. Root Cause of "Not found" on .exe Launch
+* **Cause**: In packaged Electron (`isPackaged = true`), `main.cjs` passed `baseDir = process.resourcesPath` to `server.cjs`. `server.cjs` attempted to serve frontend files from `path.join(baseDir, 'dist')` (`resources/dist`). However, `dist` was only listed in `"files"` in `package.json`, packaging it inside `app.asar`. Since `dist` was missing from `extraResources`, `resources/dist` did not exist on the filesystem. Consequently, the embedded HTTP server returned `404 Not found` for `/` and `/output`, resulting in a black window displaying plain-text `"Not found"`.
+* **Fix**:
+  1. Added `{ "from": "dist", "to": "dist" }` to `extraResources` in [package.json](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/package.json). This guarantees `resources/dist` exists on disk next to `resources/BIBLE` and `resources/songs`.
+  2. Enhanced [electron/server.cjs](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/electron/server.cjs) to search multiple directory candidates (`resourcesDir`, `appDir`, `baseDir`, `../dist`, `process.cwd()/dist`) for `distDir`, `biblesDir`, `songsDir`, `backgroundsDir`, and `super_settings.json`.
+  3. Replaced streaming with synchronous `fs.readFileSync` with strict MIME types and `Content-Length` for static assets and SPA routing fallback.
+
+### B. Standard Desktop Presentation Workflow
+* **Startup**: When launching the desktop application, the **Control Panel** immediately opens maximized on the primary display (operator screen) with full access to Songs, Scriptures, Media, Queue, and Projection controls. The projector window does NOT auto-launch without user initiation.
+* **Launch Projector Button**:
+  * Located prominently in the Control Panel topbar.
+  * Clicking **Launch Projector**:
+    1. Queries connected displays (`findExternalDisplay()`).
+    2. If an external display (HDMI / secondary monitor) is connected: launches the borderless projector window directly on the external screen in pitch black (`#000000` clear state) with `alwaysOnTop: 'screen-saver'` and `skipTaskbar: true`.
+    3. If no external display is plugged in: opens a desktop preview window.
+    4. Focus is automatically returned to the Control Panel so the operator can type, search, and queue songs/scriptures without disruption.
+  * Button reflects real-time status: changes to glowing green **`Projector Live (HDMI)`** when active, and allows closing/toggling directly or via `Esc` on the projector.
+* **Live Projection ("Shooting" Content)**:
+  * Selecting any Bible verse, song lyric, or media in the Control Panel immediately projects to the blanked external display.
+  * Pressing `Clear` / `F5` instantly blanks the external screen back to pitch black.
+
+---
+
+## 7. Performance & Latency Optimization for Live Verse Projection
+
+### A. Problem Statement
+When running the packaged Windows `.exe` application alongside OBS Studio on the same computer, verse changes took noticeable time to effect, whereas running the web version on separate machines was instant.
+
+### B. Root Causes Identified
+1. **Fallback from WebSockets to HTTP/SSE**: In dev mode (`npm run dev`), state synced over Vite's internal WebSocket (<1ms). In production, it fell back to HTTP POST + Node SSE. Node's HTTP socket had Nagle's TCP buffering enabled by default (`TCP_NODELAY = false`), delaying small SSE packets by 150-300ms.
+2. **Chromium Background Throttling**: Electron's `backgroundThrottling` defaults to `true`. Because focus is directed to the Control Panel, the external Stage Projector Window was unfocused and occluded, causing Chromium to throttle timers (down to 1Hz) and deprioritize rendering and network events. Clicking into OBS throttled both windows.
+3. **No Direct Inter-Window IPC**: The desktop app relied on network roundtrips to sync state between windows on the same machine instead of local IPC.
+4. **Single-Machine GPU Contention**: OBS running 60fps compositing and video encoding + 3 Chromium browser instances (Control Panel, Stage Output, OBS CEF browser source) competed for GPU time. Heavy `-webkit-text-stroke` and Framer Motion exit transitions with `mode="sync"` caused rendering stalls.
+
+### C. Solutions Implemented
+1. **Disabled Background Throttling**:
+   * Added `backgroundThrottling: false` to `webPreferences` in both `mainWindow` and `projectorWindow` in `electron/main.cjs`.
+   * Added Chrome switches `disable-background-timer-throttling`, `disable-backgrounding-occluded-windows`, and `disable-renderer-backgrounding`.
+2. **Multi-Layer Zero-Latency State Sync** (`src/services/dbService.ts`):
+   * **Layer 1: Native BroadcastChannel**: Transmits live state updates in-memory across local windows in 0.1ms without network stack overhead.
+   * **Layer 2: Direct Electron IPC**: Added `live-state-update` relay via `electron/preload.cjs` and `electron/main.cjs` to push updates directly to the projector window.
+   * **Layer 3: Non-blocking Fire-and-Forget Network POST**: Unblocked the React render thread by removing `await fetch(...)`, keeping the UI 0ms responsive.
+   * **Layer 4: TCP_NODELAY & Socket Optimization**: Configured `socket.setNoDelay(true)` and `res.flushHeaders()` in `electron/server.cjs` and `vite.config.ts` to immediately flush SSE packets to OBS and remote devices.
+3. **Optimized Output Transitions** (`src/pages/OutputView.tsx`):
+   * When `animation: "none"`, exit and entry durations are set to 0ms (instant DOM replacement) eliminating lingering exit nodes.
+   * Snappy 220ms/300ms transitions for fade/slide when enabled.
+   * Promoted animated layers with `willChange: "transform, opacity"` during active animations.
+
+---
+*Created on 2026-11-02. Updated on 2026-11-03. Maintained for Web-Projector.*

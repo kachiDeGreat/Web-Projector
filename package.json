@@ -1,7 +1,7 @@
 {
   "name": "web-projector",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Professional Church & Stage Projection Software for Lyrics, Bible Scriptures, and Media",
   "author": "Web Projector Team <support@webprojector.app>",
   "type": "module",
@@ -36,6 +36,10 @@
       "package.json"
     ],
     "extraResources": [
+      {
+        "from": "dist",
+        "to": "dist"
+      },
       {
         "from": "BIBLE",
         "to": "BIBLE"

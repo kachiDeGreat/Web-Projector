@@ -9,4 +9,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onProjectorClosed: (callback) => {
     ipcRenderer.on('projector-closed', () => callback());
   },
+  onDisplaysChanged: (callback) => {
+    ipcRenderer.on('displays-changed', (_event, data) => callback(data));
+  },
+  sendLiveState: (state) => {
+    ipcRenderer.send('live-state-update', state);
+  },
+  onLiveState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('live-state-update', listener);
+    return () => ipcRenderer.removeListener('live-state-update', listener);
+  },
+  getLatestLiveState: () => ipcRenderer.invoke('get-latest-live-state'),
 });

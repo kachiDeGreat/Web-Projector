@@ -287,31 +287,101 @@ export const addBible = async (bibleData: any) => {
   });
 };
 
-// Local Server Sync (WebSocket / SSE)
-export const updateLiveState = async (state: any) => {
-  try {
-    if (import.meta.hot) {
-      import.meta.hot.send('web-projector:update', state);
-      return;
-    }
-    await fetch('/api/state?t=' + Date.now(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(state)
-    });
-  } catch (err) {
-    console.error('Failed to sync live state', err);
+// In-memory cross-window synchronization channel (0ms latency, zero HTTP roundtrip)
+const LIVE_CHANNEL_NAME = 'web-projector-live-sync';
+let sharedBroadcastChannel: BroadcastChannel | null = null;
+try {
+  if (typeof window !== 'undefined' && typeof BroadcastChannel !== 'undefined') {
+    sharedBroadcastChannel = new BroadcastChannel(LIVE_CHANNEL_NAME);
   }
+} catch (e) {
+  console.warn('BroadcastChannel initialization skipped', e);
+}
+
+// Local Server Sync (Multi-layer: BroadcastChannel -> Electron IPC -> WebSocket -> SSE)
+export const updateLiveState = (state: any) => {
+  if (!state) return;
+
+  // 1. Instant 0ms in-memory broadcast to all same-origin tabs and windows
+  if (sharedBroadcastChannel) {
+    try {
+      sharedBroadcastChannel.postMessage(state);
+    } catch (e) {}
+  }
+
+  // 2. Instant 0ms native Electron IPC relay to the projector stage window
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.sendLiveState) {
+    try {
+      (window as any).electronAPI.sendLiveState(state);
+    } catch (e) {}
+  }
+
+  // 3. Vite HMR WebSocket in development mode
+  if (import.meta.hot) {
+    try {
+      import.meta.hot.send('web-projector:update', state);
+    } catch (e) {}
+  }
+
+  // 4. Non-blocking background HTTP POST for OBS Browser Source and remote network clients
+  fetch('/api/state?t=' + Date.now(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(state),
+  }).catch((err) => {
+    // Suppress network log spam if offline
+  });
 };
 
 export const subscribeToLiveState = (callback: (state: any) => void) => {
+  let isCleanedUp = false;
+  let lastSerialized = '';
+
+  const handleIncoming = (state: any) => {
+    if (isCleanedUp || !state) return;
+    try {
+      const serialized = JSON.stringify(state);
+      if (serialized === lastSerialized) return;
+      lastSerialized = serialized;
+      callback(state);
+    } catch (e) {
+      callback(state);
+    }
+  };
+
+  // 1. Subscribe to BroadcastChannel for instant local multi-window updates
+  const onBcMessage = (event: MessageEvent) => {
+    if (event.data) {
+      handleIncoming(event.data);
+    }
+  };
+  if (sharedBroadcastChannel) {
+    sharedBroadcastChannel.addEventListener('message', onBcMessage);
+  }
+
+  // 2. Subscribe to Electron native IPC
+  let unsubscribeIpc: (() => void) | null = null;
+  if (typeof window !== 'undefined' && (window as any).electronAPI?.onLiveState) {
+    try {
+      unsubscribeIpc = (window as any).electronAPI.onLiveState((state: any) => {
+        handleIncoming(state);
+      });
+      // Query initial state immediately if available
+      (window as any).electronAPI.getLatestLiveState?.().then((initialState: any) => {
+        if (initialState) handleIncoming(initialState);
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  // 3. Subscribe to Vite HMR WebSocket in development mode
+  let offHmr: (() => void) | null = null;
   if (import.meta.hot) {
-    const handler = (data: any) => callback(data);
+    const handler = (data: any) => handleIncoming(data);
     import.meta.hot.on('web-projector:state', handler);
     import.meta.hot.send('web-projector:request-state', {});
-    return () => {
+    offHmr = () => {
       // @ts-ignore
       if (import.meta.hot.off) {
         // @ts-ignore
@@ -320,41 +390,58 @@ export const subscribeToLiveState = (callback: (state: any) => void) => {
     };
   }
 
-  // Fallback to SSE if Vite HMR is somehow disabled
-  let eventSource: EventSource;
-  let heartbeatTimer: any;
+  // 4. Fallback / OBS Browser Source / Remote SSE client
+  let eventSource: EventSource | null = null;
+  let heartbeatTimer: any = null;
 
   const connect = () => {
-    eventSource = new EventSource('/api/state?t=' + Date.now());
-    
-    const resetHeartbeat = () => {
-      clearTimeout(heartbeatTimer);
-      heartbeatTimer = setTimeout(() => {
-        console.warn('SSE heartbeat timeout. Reconnecting...');
-        eventSource.close();
-        connect();
-      }, 20000);
-    };
+    if (isCleanedUp) return;
+    try {
+      eventSource = new EventSource('/api/state?t=' + Date.now());
 
-    eventSource.onmessage = (event) => {
+      const resetHeartbeat = () => {
+        clearTimeout(heartbeatTimer);
+        heartbeatTimer = setTimeout(() => {
+          if (!isCleanedUp && eventSource) {
+            console.warn('SSE heartbeat timeout. Reconnecting...');
+            eventSource.close();
+            connect();
+          }
+        }, 20000);
+      };
+
+      eventSource.onmessage = (event) => {
+        resetHeartbeat();
+        try {
+          const state = JSON.parse(event.data);
+          handleIncoming(state);
+        } catch (e) {}
+      };
+
+      eventSource.addEventListener('ping', () => resetHeartbeat());
+      eventSource.onerror = () => {};
       resetHeartbeat();
-      try {
-        const state = JSON.parse(event.data);
-        callback(state);
-      } catch (e) {
-        console.error('Failed to parse SSE data', e);
-      }
-    };
-
-    eventSource.addEventListener('ping', () => resetHeartbeat());
-    eventSource.onerror = () => {};
-    resetHeartbeat();
+    } catch (e) {
+      console.warn('Could not establish EventSource connection', e);
+    }
   };
 
   connect();
 
   return () => {
+    isCleanedUp = true;
+    if (sharedBroadcastChannel) {
+      sharedBroadcastChannel.removeEventListener('message', onBcMessage);
+    }
+    if (unsubscribeIpc) {
+      unsubscribeIpc();
+    }
+    if (offHmr) {
+      offHmr();
+    }
     clearTimeout(heartbeatTimer);
-    if (eventSource) eventSource.close();
+    if (eventSource) {
+      eventSource.close();
+    }
   };
 };
