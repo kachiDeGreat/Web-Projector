@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { addSong, getSongs, getBibles } from "../services/dbService";
 import { bibleService } from "../services/bibleService";
+import { searchAutomaticLyrics } from "../services/lyricsService";
 import toast from 'react-hot-toast';
 
 const Dashboard = () => {
@@ -108,53 +109,23 @@ const Dashboard = () => {
   };
 
   const handleOnlineSearch = async () => {
-    if (!songTitle) return toast.error("Enter a title to search!");
+    if (!songTitle.trim()) return toast.error("Enter a title to search!");
     setIsUploading(true);
-    const toastId = toast.loading('Searching online...');
+    const toastId = toast.loading('Searching online (LRCLIB & Lyrics.ovh)...');
     try {
-      // If artist is provided, just search exactly
-      if (songArtist) {
-        const res = await fetch(`https://api.lyrics.ovh/v1/${songArtist}/${songTitle}`);
-        const data = await res.json();
-        if (data.lyrics) {
-          setSearchResults([{ title: songTitle, artist: songArtist, lyrics: data.lyrics }]);
-          toast.success("Found 1 result!", { id: toastId });
-        } else {
-          toast.error("Lyrics not found.", { id: toastId });
-          setSearchResults([]);
-        }
+      const { results, providerUsed } = await searchAutomaticLyrics(songTitle, songArtist);
+      if (results.length > 0) {
+        setSearchResults(
+          results.map((r) => ({
+            title: r.title,
+            artist: r.artist,
+            lyrics: r.lyrics,
+          }))
+        );
+        toast.success(`Found ${results.length} result(s) via ${providerUsed}!`, { id: toastId });
       } else {
-        // Otherwise use suggest API
-        const suggestRes = await fetch(`https://api.lyrics.ovh/suggest/${songTitle}`);
-        const suggestData = await suggestRes.json();
-        const top5 = suggestData.data?.slice(0, 5) || [];
-        
-        if (top5.length === 0) {
-          toast.error("No songs found.", { id: toastId });
-          setSearchResults([]);
-          setIsUploading(false);
-          return;
-        }
-
-        toast.loading("Fetching lyrics for results...", { id: toastId });
-        const results = [];
-        for (const track of top5) {
-          try {
-            const lyricRes = await fetch(`https://api.lyrics.ovh/v1/${track.artist.name}/${track.title}`);
-            const lyricData = await lyricRes.json();
-            if (lyricData.lyrics) {
-              results.push({ title: track.title, artist: track.artist.name, lyrics: lyricData.lyrics });
-            }
-          } catch (e) {} // ignore individual fetch errors
-        }
-
-        if (results.length > 0) {
-          setSearchResults(results);
-          toast.success(`Found ${results.length} result(s)!`, { id: toastId });
-        } else {
-          toast.error("Could not fetch lyrics for the found songs.", { id: toastId });
-          setSearchResults([]);
-        }
+        toast.error("Lyrics not found on primary or backup providers.", { id: toastId });
+        setSearchResults([]);
       }
     } catch (err) {
       toast.error("Error searching lyrics.", { id: toastId });

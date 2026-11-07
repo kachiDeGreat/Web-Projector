@@ -43,6 +43,11 @@ import {
   updateSong,
   deleteAllSongs,
 } from "../services/dbService";
+import {
+  searchAutomaticLyrics,
+  LyricsSearchResult,
+  cleanLyricsText,
+} from "../services/lyricsService";
 
 export interface BibleHistoryItem {
   id: string;
@@ -500,24 +505,8 @@ export default function ControlPanel() {
   const [songSearchArtist, setSongSearchArtist] = useState("");
   const [songSearchTitle, setSongSearchTitle] = useState("");
   const [isSearchingSong, setIsSearchingSong] = useState(false);
-  const [songSearchResults, setSongSearchResults] = useState<
-    Array<{
-      id: number | string;
-      title: string;
-      artist: string;
-      album?: string;
-      lyrics: string;
-      duration?: number;
-    }>
-  >([]);
-  const [hoveredSearchResult, setHoveredSearchResult] = useState<{
-    id: number | string;
-    title: string;
-    artist: string;
-    album?: string;
-    lyrics: string;
-    duration?: number;
-  } | null>(null);
+  const [songSearchResults, setSongSearchResults] = useState<LyricsSearchResult[]>([]);
+  const [hoveredSearchResult, setHoveredSearchResult] = useState<LyricsSearchResult | null>(null);
   const [showSearchResultsModal, setShowSearchResultsModal] = useState(false);
   const [tooltipTop, setTooltipTop] = useState(120);
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
@@ -532,6 +521,71 @@ export default function ControlPanel() {
   const [activeSongChunkIndex, setActiveSongChunkIndex] = useState<
     number | null
   >(null);
+
+  // Synchronized refs for fresh state access in global keyboard shortcuts (Ctrl+S)
+  const isSettingsOpenRef = useRef(isSettingsOpen);
+  const activeTabRef = useRef(activeTab);
+  const songViewModeRef = useRef(songViewMode);
+  const activeSongTitleRef = useRef(activeSongTitle);
+  const activeSongArtistRef = useRef(activeSongArtist);
+  const lyricsRef = useRef(lyrics);
+  const activeSongIdRef = useRef(activeSongId);
+  const activeSongFilenameRef = useRef(activeSongFilename);
+  const activeSongSettingsRef = useRef(activeSongSettings);
+
+  useEffect(() => { isSettingsOpenRef.current = isSettingsOpen; }, [isSettingsOpen]);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { songViewModeRef.current = songViewMode; }, [songViewMode]);
+  useEffect(() => { activeSongTitleRef.current = activeSongTitle; }, [activeSongTitle]);
+  useEffect(() => { activeSongArtistRef.current = activeSongArtist; }, [activeSongArtist]);
+  useEffect(() => { lyricsRef.current = lyrics; }, [lyrics]);
+  useEffect(() => { activeSongIdRef.current = activeSongId; }, [activeSongId]);
+  useEffect(() => { activeSongFilenameRef.current = activeSongFilename; }, [activeSongFilename]);
+  useEffect(() => { activeSongSettingsRef.current = activeSongSettings; }, [activeSongSettings]);
+
+  const handleSaveSong = async () => {
+    const titleToSave = activeSongTitleRef.current.trim();
+    if (!titleToSave) {
+      toast.error("Please enter a song title.");
+      return;
+    }
+    try {
+      const animSettings = {
+        enableKineticTypography: !!activeSongSettingsRef.current.enableKineticTypography,
+        kineticTempo: activeSongSettingsRef.current.kineticTempo || "fast",
+        animation: activeSongSettingsRef.current.animation || "none",
+        animationTemplate: activeSongSettingsRef.current.animationTemplate || "guessing-kinetic",
+      };
+      if (activeSongIdRef.current) {
+        await updateSong(
+          activeSongIdRef.current,
+          titleToSave,
+          activeSongArtistRef.current,
+          lyricsRef.current,
+          animSettings,
+          activeSongFilenameRef.current,
+        );
+        toast.success("Song updated in songs folder!");
+      } else {
+        const newId = await addSong(
+          titleToSave,
+          activeSongArtistRef.current,
+          lyricsRef.current,
+          animSettings,
+        );
+        setActiveSongId(newId);
+        setActiveSongFilename(
+          `${titleToSave.replace(/[<>:"/\\|?*]/g, "_")}.txt`,
+        );
+        toast.success("Song saved to songs folder!");
+      }
+      await loadSongs();
+      setSongViewMode("play");
+    } catch (e) {
+      console.error("Failed to save song", e);
+      toast.error("Failed to save song");
+    }
+  };
 
   const updateActiveSongSettings = (updates: Partial<SongSettings>) => {
     const animKeys: (keyof SongSettings)[] = [
@@ -1284,25 +1338,6 @@ export default function ControlPanel() {
     reader.readAsText(file);
   };
 
-  const cleanLyricsText = (
-    plainLyrics?: string | null,
-    syncedLyrics?: string | null,
-  ): string => {
-    if (plainLyrics && plainLyrics.trim()) {
-      return plainLyrics.trim();
-    }
-    if (syncedLyrics && syncedLyrics.trim()) {
-      return syncedLyrics
-        .split("\n")
-        .map((line) =>
-          line.replace(/\[\d{2}:\d{2}(?:\.\d{1,3})?\]/g, "").trim(),
-        )
-        .filter((line) => line.length > 0)
-        .join("\n");
-    }
-    return "";
-  };
-
   const handleOnlineSongSearch = async () => {
     const title = songSearchTitle.trim();
     const artist = songSearchArtist.trim();
@@ -1314,72 +1349,22 @@ export default function ControlPanel() {
     setHoveredSearchResult(null);
 
     try {
-      let url = `https://lrclib.net/api/search?track_name=${encodeURIComponent(title)}`;
-      if (artist) {
-        url += `&artist_name=${encodeURIComponent(artist)}`;
-      }
+      const { results, providerUsed } = await searchAutomaticLyrics(title, artist);
 
-      let res = await fetch(url);
-      let data = await res.json();
-
-      const hasLyrics =
-        Array.isArray(data) &&
-        data.some(
-          (d: any) => !d.instrumental && (d.plainLyrics || d.syncedLyrics),
+      if (results.length > 0) {
+        setSongSearchResults(results);
+        setShowSearchResultsModal(true);
+        setHoveredSearchResult(results[0]);
+        toast.success(
+          `Found ${results.length} match${results.length > 1 ? "es" : ""} via ${providerUsed}! Hover to preview.`,
         );
-
-      if (!hasLyrics) {
-        const queryTerm = `${title} ${artist}`.trim();
-        const fallbackRes = await fetch(
-          `https://lrclib.net/api/search?q=${encodeURIComponent(queryTerm)}`,
-        );
-        data = await fallbackRes.json();
-      }
-
-      if (Array.isArray(data)) {
-        const parsed = data
-          .filter(
-            (item: any) =>
-              !item.instrumental && (item.plainLyrics || item.syncedLyrics),
-          )
-          .map((item: any) => ({
-            id: item.id,
-            title: item.trackName || item.name || title,
-            artist: item.artistName || artist || "Unknown",
-            album: item.albumName || "",
-            lyrics: cleanLyricsText(item.plainLyrics, item.syncedLyrics),
-            duration: item.duration,
-          }))
-          .filter((item) => item.lyrics.length > 0);
-
-        const unique: typeof parsed = [];
-        const seen = new Set<string>();
-        for (const item of parsed) {
-          const key = `${item.title.toLowerCase().trim()}___${item.artist.toLowerCase().trim()}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            unique.push(item);
-          }
-          if (unique.length >= 6) break;
-        }
-
-        if (unique.length > 0) {
-          setSongSearchResults(unique);
-          setShowSearchResultsModal(true);
-          setHoveredSearchResult(unique[0]);
-          toast.success(
-            `Found ${unique.length} lyrics match${unique.length > 1 ? "es" : ""}. Hover to preview!`,
-          );
-        } else {
-          toast.error(
-            "No lyrics found. Try checking the song title or artist name.",
-          );
-        }
       } else {
-        toast.error("Lyrics service returned unexpected response format.");
+        toast.error(
+          "No lyrics found on primary (LRCLIB) or backup (Lyrics.ovh) APIs. Try checking the title or artist spelling.",
+        );
       }
     } catch (err) {
-      console.error("Error fetching lyrics from LRCLIB", err);
+      console.error("Error fetching lyrics", err);
       toast.error(
         "Could not fetch lyrics. Please check your internet connection.",
       );
@@ -1388,13 +1373,7 @@ export default function ControlPanel() {
     }
   };
 
-  const handleSelectSearchResult = async (selected: {
-    id: number | string;
-    title: string;
-    artist: string;
-    album?: string;
-    lyrics: string;
-  }) => {
+  const handleSelectSearchResult = async (selected: LyricsSearchResult) => {
     try {
       const newId = await addSong(
         selected.title,
@@ -1847,10 +1826,28 @@ export default function ControlPanel() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 1. Ctrl+S or Cmd+S: Save Settings shortcut
+      // 1. Ctrl+S or Cmd+S contextual save:
       if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
-        saveGlobalSettings();
+
+        // A. If Settings dialogue is open: save settings to super_settings.json
+        if (isSettingsOpenRef.current) {
+          saveGlobalSettings();
+          return;
+        }
+
+        // B. If editing a song: save the active song to songs folder & database
+        const isEditingSong =
+          (activeTabRef.current === "songs" && songViewModeRef.current === "edit") ||
+          (songViewModeRef.current === "edit" &&
+            (activeSongTitleRef.current.trim() || lyricsRef.current.trim()));
+
+        if (isEditingSong) {
+          handleSaveSong();
+          return;
+        }
+
+        // C. Otherwise: suppress browser "Save Webpage" dialog without saving settings
         return;
       }
 
@@ -5669,6 +5666,9 @@ export default function ControlPanel() {
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div
                                 style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
                                   fontWeight: 600,
                                   fontSize: "0.82rem",
                                   color: isHovered
@@ -5679,7 +5679,30 @@ export default function ControlPanel() {
                                   textOverflow: "ellipsis",
                                 }}
                               >
-                                {res.title}
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {res.title}
+                                </span>
+                                {res.source && (
+                                  <span
+                                    style={{
+                                      fontSize: "0.62rem",
+                                      padding: "1px 5px",
+                                      borderRadius: "4px",
+                                      background:
+                                        res.source === "LRCLIB"
+                                          ? "rgba(99, 102, 241, 0.25)"
+                                          : "rgba(16, 185, 129, 0.25)",
+                                      color:
+                                        res.source === "LRCLIB"
+                                          ? "#818cf8"
+                                          : "#34d399",
+                                      fontWeight: 600,
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {res.source}
+                                  </span>
+                                )}
                               </div>
                               <div
                                 style={{
@@ -7147,47 +7170,8 @@ export default function ControlPanel() {
                         fontWeight: 600,
                         borderRadius: "6px",
                       }}
-                      onClick={async () => {
-                        if (!activeSongTitle.trim()) {
-                          toast.error("Please enter a song title.");
-                          return;
-                        }
-                        try {
-                          const animSettings = {
-                            enableKineticTypography: !!activeSongSettings.enableKineticTypography,
-                            kineticTempo: activeSongSettings.kineticTempo || "fast",
-                            animation: activeSongSettings.animation || "none",
-                            animationTemplate: activeSongSettings.animationTemplate || "guessing-kinetic",
-                          };
-                          if (activeSongId) {
-                            await updateSong(
-                              activeSongId,
-                              activeSongTitle,
-                              activeSongArtist,
-                              lyrics,
-                              animSettings,
-                              activeSongFilename,
-                            );
-                            toast.success("Song updated in songs folder!");
-                          } else {
-                            const newId = await addSong(
-                              activeSongTitle,
-                              activeSongArtist,
-                              lyrics,
-                              animSettings,
-                            );
-                            setActiveSongId(newId);
-                            setActiveSongFilename(
-                              `${activeSongTitle.trim().replace(/[<>:"/\\|?*]/g, "_")}.txt`,
-                            );
-                            toast.success("Song saved to songs folder!");
-                          }
-                          await loadSongs();
-                          setSongViewMode("play");
-                        } catch (e) {
-                          toast.error("Failed to save song");
-                        }
-                      }}
+                      title="Save Song (Ctrl+S)"
+                      onClick={handleSaveSong}
                     >
                       Save Song
                     </button>

@@ -171,4 +171,22 @@ When running the packaged Windows `.exe` application alongside OBS Studio on the
    * Promoted animated layers with `willChange: "transform, opacity"` during active animations.
 
 ---
-*Created on 2026-11-02. Updated on 2026-11-03. Maintained for Web-Projector.*
+
+## 8. Multi-Provider Lyrics Search & Contextual Ctrl+S Saving
+
+### A. Automatic Lyrics Backup API (`src/services/lyricsService.ts`)
+* **Problem**: LRCLIB alone often returned empty results or timed out for certain worship songs, hymns, and contemporary tracks.
+* **Solution**: Implemented a multi-provider automatic fallback service:
+  1. **Primary Provider (LRCLIB)**: Queries `search?track_name` and `artist_name`, followed by `search?q` and exact `api/get` with a 6-second `AbortController` timeout.
+  2. **Backup Provider (Lyrics.ovh)**: If LRCLIB returns 0 results or fails, the service automatically triggers Lyrics.ovh, executing direct artist/title lookups and Deezer suggest track queries to retrieve clean lyrics.
+  3. **Attribution Badges**: Search result items now clearly show whether they were sourced from `[LRCLIB]` or `[Lyrics.ovh]`.
+
+### B. Contextual `Ctrl + S` Shortcut Routing (`src/pages/ControlPanel.tsx`)
+* **Problem**: Previously, pressing `Ctrl + S` anywhere in the app immediately triggered `saveGlobalSettings()`, saving super settings to JSON even when the user was typing/editing lyrics for a song.
+* **Solution**:
+  1. **Settings Dialog**: `Ctrl + S` now ONLY saves global settings if the Settings modal is open (`isSettingsOpenRef.current === true`).
+  2. **Song Editor**: If the user is on a song being edited (`activeTab === 'songs' && songViewMode === 'edit'` or typing song lyrics/title), `Ctrl + S` saves the song to the songs folder and updates the database, then switches to play mode.
+  3. **Neutral Context**: If neither settings nor a song is being edited, `Ctrl + S` prevents default without triggering any unwanted settings saves.
+
+---
+*Created on 2026-11-02. Updated on 2026-11-07. Maintained for Web-Projector.*
