@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-11-02T10:36:48.807Z",
+  "updatedAt": "2026-11-11T15:06:48.601Z",
   "bibleSettings": {
     "layout": "FS",
     "verticalAlign": "middle",
@@ -42,7 +42,7 @@
     "fontFamily": "Arial, sans-serif",
     "textColor": "#FFFFFF",
     "shadowIntensity": 100,
-    "transparentBackground": true,
+    "transparentBackground": false,
     "paddingLR": 0,
     "backgroundMode": "solid",
     "backgroundColor": "#000000",
@@ -56,7 +56,7 @@
     "fontFamily": "Arial, sans-serif",
     "textColor": "#FFFFFF",
     "shadowIntensity": 100,
-    "transparentBackground": true,
+    "transparentBackground": false,
     "paddingLR": 0,
     "backgroundMode": "solid",
     "backgroundColor": "#000000",
@@ -94,7 +94,7 @@
     "kineticTempo": "fast",
     "animationTemplate": "guessing-kinetic",
     "type": "song",
-    "title": "OFFERING",
-    "text": "Alle Alle Alleluia\nYou get all the praise"
+    "title": "NOTHING WITHOUT YOU ELGRACE",
+    "text": "Grace brought me here\nAnd it is grace"
   }
 }
