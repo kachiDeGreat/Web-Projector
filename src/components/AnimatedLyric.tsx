@@ -8,6 +8,7 @@ interface AnimatedLyricProps {
   introAnimation?: string; // Specific intro animation to use
   animationTemplate?: string; // Template style: 'guessing-kinetic' | 'staggered-char-spring' | 'zoom-in-bottom'
   disableIntro?: boolean; // When true, parent motion container handles intro entrance (e.g. OutputView)
+  lineColors?: string[]; // Optional per-line custom text colors
 }
 
 // 60 Awesome kinetic animations! (Added more to ensure extreme variety)
@@ -189,6 +190,7 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
   introAnimation,
   animationTemplate = "guessing-kinetic",
   disableIntro = false,
+  lineColors,
 }) => {
   // Determine if it's a multiline repetition
   const { isVerticalMarquee, isHorizontalMarquee, displayLines } =
@@ -254,12 +256,12 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
     return "5s";
   }, [kineticTempo]);
 
-  // Pick random animations per line (up to 2 lines for standard lyrics)
+  // Pick random animations per line (up to 4 lines for lyrics)
   const lineAnimations = useMemo(() => {
     if (isVerticalMarquee || isHorizontalMarquee) return [];
 
     if (introAnimation) {
-      return [introAnimation, introAnimation];
+      return [introAnimation, introAnimation, introAnimation, introAnimation];
     }
 
     let animPool = STANDARD_ANIMATIONS;
@@ -268,11 +270,11 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
     if (kineticTempo === "fast") animPool = FAST_ANIMATIONS;
     if (kineticTempo === "random") animPool = STANDARD_ANIMATIONS;
 
-    // Pick different random animations for line 1 and line 2
+    // Pick different random animations per line
     const getRand = () => animPool[Math.floor(Math.random() * animPool.length)];
 
     // 100% chance completely random for massive variety
-    return [getRand(), getRand()];
+    return [getRand(), getRand(), getRand(), getRand()];
   }, [
     isVerticalMarquee,
     isHorizontalMarquee,
@@ -336,7 +338,12 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
         animationTemplate === "staggered-char-spring" ? (
           <div className="template-char-spring-container">
             {/* Primary Line: Staggered Per-Character Spring Drop-In */}
-            <div className="char-spring-line-primary">
+            <div
+              className="char-spring-line-primary"
+              style={{
+                color: (lineColors && lineColors[0]) || "inherit",
+              }}
+            >
               {(() => {
                 const primaryText = displayLines[0] || "";
                 const primaryWords = primaryText.split(/\s+/).filter(Boolean);
@@ -403,7 +410,9 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
               );
 
               return displayLines.slice(1).map((subline, sIdx) => {
+                const lineIndex = sIdx + 1;
                 const lineDelay = subtextDelay + sIdx * 0.12;
+                const customColor = lineColors && lineColors[lineIndex];
                 return (
                   <div
                     key={`sub-${sIdx}`}
@@ -413,6 +422,7 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
                       animationDelay: `${lineDelay.toFixed(3)}s`,
                       animationTimingFunction:
                         "cubic-bezier(0.16, 1, 0.3, 1)",
+                      color: customColor || (lineIndex === 1 ? "#FFD700" : "inherit"),
                     }}
                   >
                     {subline}
@@ -452,14 +462,15 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
                     animationDelay: disableIntro ? "0s" : introDuration,
                   }}
                 >
-                  {displayLines.slice(0, 2).map((line, lineIndex) => {
+                  {displayLines.slice(0, 4).map((line, lineIndex) => {
                     const isSecondLine = lineIndex === 1;
+                    const customColor = lineColors && lineColors[lineIndex];
                     return (
                       <div
                         key={`zoom-line-${lineIndex}`}
                         className="zoom-bottom-line"
                         style={{
-                          color: isSecondLine ? "#FFD700" : "inherit",
+                          color: customColor || (isSecondLine ? "#FFD700" : "inherit"),
                         }}
                       >
                         {line}
@@ -472,10 +483,14 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
           })()
         ) : (
           <div className="lyric-lines-container">
-            {displayLines.slice(0, 2).map((line, lineIndex) => {
+            {displayLines.slice(0, 4).map((line, lineIndex) => {
               const lineAnim = lineAnimations[lineIndex] || "zoom-in";
               const words = line.split(/\s+/);
               const isSecondLine = lineIndex === 1;
+              const customColor = lineColors && lineColors[lineIndex];
+              const idleClass =
+                lineIdleAnimations[lineIndex % lineIdleAnimations.length] ||
+                "idle-pan-left";
 
               return (
                 <div
@@ -488,7 +503,7 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
                     margin: "0",
                     lineHeight: "1.3",
                     padding: "0.1em 0",
-                    color: isSecondLine ? "#FFD700" : "inherit",
+                    color: customColor || (isSecondLine ? "#FFD700" : "inherit"),
                   }}
                 >
                   {words.map((word, wordIndex) => (
@@ -501,7 +516,7 @@ export const AnimatedLyric: React.FC<AnimatedLyricProps> = ({
                       }}
                     >
                       <span
-                        className={`lyric-word-inner ${lineIdleAnimations[lineIndex]}`}
+                        className={`lyric-word-inner ${idleClass}`}
                         style={{ animationDuration: idleDuration }}
                       >
                         {word}

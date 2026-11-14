@@ -134,16 +134,22 @@ function startServer({
     const lines = content.split(/\r?\n/);
     let title = path.basename(filename, path.extname(filename));
     let artist = '';
+    let settings = null;
     let lyricsStart = 0;
     let hasHeader = false;
 
-    for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    for (let i = 0; i < Math.min(lines.length, 14); i++) {
       const line = lines[i].trim();
       if (line.toLowerCase().startsWith('title:')) {
         title = line.substring(6).trim();
         hasHeader = true;
       } else if (line.toLowerCase().startsWith('artist:')) {
         artist = line.substring(7).trim();
+        hasHeader = true;
+      } else if (line.toLowerCase().startsWith('settings:')) {
+        try {
+          settings = JSON.parse(line.substring(9).trim());
+        } catch (e) {}
         hasHeader = true;
       } else if (line === '---' || line === '===') {
         lyricsStart = i + 1;
@@ -160,13 +166,18 @@ function startServer({
       id: 'song_' + Buffer.from(filename).toString('hex'),
       title: title || path.basename(filename, path.extname(filename)),
       artist: artist || '',
+      settings: settings || undefined,
       lyrics: lyrics,
       filename: filename,
     };
   };
 
-  const serializeSongTxt = (title, artist, lyrics) => {
-    return `Title: ${title.trim()}\nArtist: ${(artist || '').trim()}\n---\n${(lyrics || '').trim()}\n`;
+  const serializeSongTxt = (title, artist, lyrics, settings) => {
+    let header = `Title: ${title.trim()}\nArtist: ${(artist || '').trim()}\n`;
+    if (settings && typeof settings === 'object' && Object.keys(settings).length > 0) {
+      header += `Settings: ${JSON.stringify(settings)}\n`;
+    }
+    return `${header}---\n${(lyrics || '').trim()}\n`;
   };
 
   // High-performance server-side in-memory cache for songs
@@ -528,7 +539,7 @@ function startServer({
       });
       req.on('end', () => {
         try {
-          const { title, artist, lyrics, originalFilename } = JSON.parse(body);
+          const { title, artist, lyrics, settings, originalFilename } = JSON.parse(body);
           if (!title || !title.trim()) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Title is required' }));
@@ -546,7 +557,7 @@ function startServer({
             songCache.delete(originalFilename);
           }
 
-          const content = serializeSongTxt(title, artist, lyrics);
+          const content = serializeSongTxt(title, artist, lyrics, settings);
           fs.writeFileSync(filePath, content, 'utf8');
           songCache.delete(filename);
 

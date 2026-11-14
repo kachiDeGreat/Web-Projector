@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "updatedAt": "2026-11-11T15:06:48.601Z",
+  "updatedAt": "2026-11-14T09:29:59.954Z",
   "bibleSettings": {
     "layout": "FS",
     "verticalAlign": "middle",
@@ -30,7 +30,7 @@
     "verticalAlign": "middle",
     "horizontalAlign": "center",
     "linesMode": 2,
-    "songFontSize": 2,
+    "songFontSize": 4,
     "songFontWeight": "800",
     "songTextTransform": "uppercase",
     "enableKineticTypography": false,
@@ -87,14 +87,213 @@
     "animation": "none",
     "bibleAutoFitFontSize": true,
     "showVerseNumber": true,
-    "songFontSize": 2,
+    "songFontSize": 4,
     "songFontWeight": "800",
     "songTextTransform": "uppercase",
     "enableKineticTypography": false,
     "kineticTempo": "fast",
     "animationTemplate": "guessing-kinetic",
+    "lineColors": [
+      "#FFFFFF",
+      "#FFD700"
+    ],
+    "slideLineColors": {
+      "4": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "5": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "6": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "7": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "8": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "9": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "10": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "11": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "12": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "13": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "14": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "15": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "16": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "17": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "18": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "19": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "23": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "24": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "25": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "26": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "27": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "28": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "29": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "30": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "31": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "32": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "33": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "34": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "35": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "36": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "37": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "38": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "39": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "40": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "41": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "42": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "43": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "44": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "45": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "46": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "47": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "48": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "49": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "50": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "51": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "52": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "53": [
+        "#FFFFFF",
+        "#FFD700"
+      ],
+      "54": [
+        "#FFFFFF",
+        "#FFD700"
+      ]
+    },
+    "lineColorsPattern": [],
     "type": "song",
-    "title": "NOTHING WITHOUT YOU ELGRACE",
-    "text": "Grace brought me here\nAnd it is grace"
+    "title": "AMAGHIMO",
+    "text": "Nge bido nakaikpa\n(to start from the left)"
   }
 }

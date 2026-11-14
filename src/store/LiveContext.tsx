@@ -38,6 +38,9 @@ export interface SongSettings {
   kineticTempo: 'slow' | 'medium' | 'fast';
   animation: 'none' | 'fade' | 'slide' | 'zoom';
   animationTemplate?: string;
+  lineColors?: string[];
+  slideLineColors?: { [slideIndex: number]: string[] };
+  lineColorsPattern?: string[];
 }
 
 export interface GlobalDisplaySettings {
@@ -142,6 +145,7 @@ export const buildLiveState = (
       type: 'song',
       title: content.title,
       text: content.text,
+      lineColors: song.lineColors || [],
     };
   }
   return {
@@ -381,13 +385,16 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
   const projectSong = (title: string, text: string, songSettings?: Partial<SongSettings>) => {
     // Individual songs always strictly follow the master song styling in Settings.
-    // The ONLY property that can change per-song is animation (kinetic typography, tempo, template):
+    // The properties that can change per-song are animation and line colors:
     const effectiveSongSettings: SongSettings = {
       ...defaultSongSettingsState,
       enableKineticTypography: !!songSettings?.enableKineticTypography,
       kineticTempo: songSettings?.kineticTempo ?? defaultSongSettingsState.kineticTempo ?? 'fast',
       animation: songSettings?.animation ?? defaultSongSettingsState.animation ?? 'none',
       animationTemplate: songSettings?.animationTemplate ?? defaultSongSettingsState.animationTemplate ?? 'guessing-kinetic',
+      lineColors: songSettings?.lineColors,
+      slideLineColors: songSettings?.slideLineColors,
+      lineColorsPattern: songSettings?.lineColorsPattern,
     };
     const nextLive = buildLiveState('song', { title, text }, globalSettings, bibleSettings, effectiveSongSettings);
     setLiveState(nextLive);

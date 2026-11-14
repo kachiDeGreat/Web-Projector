@@ -189,4 +189,49 @@ When running the packaged Windows `.exe` application alongside OBS Studio on the
   3. **Neutral Context**: If neither settings nor a song is being edited, `Ctrl + S` prevents default without triggering any unwanted settings saves.
 
 ---
-*Created on 2026-11-02. Updated on 2026-11-07. Maintained for Web-Projector.*
+
+## 9. Per-Line Song Color Customization, Slide Style Copy/Paste & Persistence
+
+### A. Per-Line Color Customization
+* **Context**: Stage worship leaders and projectionists frequently need visual differentiation between lyric parts—such as lead singer lines vs. congregation/choir responses, call-and-response worship, or highlighting a specific line (e.g. line 1 white, line 2 golden yellow, line 3 crimson red).
+* **Implementation**:
+  * **Line Color Studio Modal** ([ControlPanel.tsx](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/src/pages/ControlPanel.tsx)):
+    * Clicking the Palette icon on any slide card opens the Slide Line Color Studio.
+    * Features a real-time live preview of the slide text and individual controls for every line in that slide.
+    * 10 quick color swatches (White `#FFFFFF`, Golden Yellow `#FFD700`, Crimson Red `#EF4444`, Vibrant Cyan `#06B6D4`, Emerald Green `#10B981`, Vivid Orange `#F97316`, Amber `#F59E0B`, Pink `#EC4899`, Sky Blue `#38BDF8`, Purple `#A855F7`), alongside an editable hex input and HTML5 native color picker for infinite custom colors.
+    * Quick 1-click slide presets: *"Every 2nd Yellow"*, *"White / Gold"*, *"Lead & Choir"*, *"White & Red"*, and *"All White"*.
+  * **Unified Rendering Engine**:
+    * **Output View & Stage Projection** ([OutputView.tsx](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/src/pages/OutputView.tsx)): Renders each line with its effective color `state.lineColors[lineIndex] || state.textColor || '#ffffff'`. Parent CSS stroke outlines and drop shadows are preserved across every colored line.
+    * **Kinetic Typography** ([AnimatedLyric.tsx](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/src/components/AnimatedLyric.tsx)): Accepts `lineColors` and applies the designated color per line across all animation templates (`guessing-kinetic`, `zoom-in-bottom`, and `staggered-char-spring`).
+    * **Control Panel Cards** ([ControlPanel.tsx](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/src/pages/ControlPanel.tsx)): Each slide card in the Play grid shows the actual line colors and color preview dots in its header.
+
+### B. Slide Style Copy & Paste System
+* **Copy Slide Style**: Clicking the Copy icon on any slide card copies that slide's line style to an in-memory clipboard.
+* **Paste to Target Slide**: A 1-click clipboard paste button appears on all slide cards to apply the copied style to that specific slide.
+* **Paste to Remaining Slides**: In the Slide Studio, clicking *"Paste to Remaining Slides"* applies the style to all subsequent slides (from `Slide #{i+2}` to the end of the song).
+* **Apply to ALL Slides in Song**: 1-click propagation of a slide's color scheme across every slide in the entire song.
+* **Song-Wide Patterns Dropdown**: Added a *"Line Colors"* menu in the Play mode toolbar with 1-click options:
+  * *"Every 2nd Line Yellow (All Slides)"*
+  * *"Alternate White / Gold (All Slides)"*
+  * *"Lead & Choir (Cyan / Yellow)"*
+  * *"White & Red Accent"*
+  * *"Paste Copied Style to ALL Slides"*
+  * *"Reset All Slides to Default"*
+
+### C. Persistent Storage Across .txt Files & IndexedDB
+* **Header Serialization** (`electron/server.cjs` & `vite.config.ts`):
+  * Song `.txt` files in the `songs/` directory now save settings directly in their header:
+    ```txt
+    Title: Amazing Grace
+    Artist: John Newton
+    Settings: {"slideLineColors":{"0":["#FFFFFF","#FFD700"]},"lineColorsPattern":["#FFFFFF","#FFD700"]}
+    ---
+    Amazing grace how sweet the sound
+    That saved a wretch like me
+    ```
+  * Custom line colors and patterns survive moving `.txt` files across drives or machines without breaking plain-text file compatibility.
+* **IndexedDB & Local Cache** (`src/services/dbService.ts`):
+  * Updates to slide colors auto-save to IndexedDB and the backend `/api/songs/save` endpoint immediately, keeping local and remote clients synchronized.
+
+---
+*Created on 2026-11-02. Updated on 2026-11-13. Maintained for Web-Projector.*

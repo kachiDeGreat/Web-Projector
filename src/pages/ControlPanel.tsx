@@ -29,6 +29,9 @@ import {
   Type,
   Music,
   Download,
+  Copy,
+  ClipboardCheck,
+  Sparkles,
 } from "lucide-react";
 import "../styles/panel.css";
 import { bibleService, BibleVersion, Verse } from "../services/bibleService";
@@ -289,8 +292,16 @@ export default function ControlPanel() {
       kineticTempo: prev.kineticTempo,
       animation: prev.animation,
       animationTemplate: prev.animationTemplate,
+      lineColors: prev.lineColors,
+      slideLineColors: prev.slideLineColors,
+      lineColorsPattern: prev.lineColorsPattern,
     }));
   }, [defaultSongSettings]);
+
+  // Slide line color styling state
+  const [stylingSlideIndex, setStylingSlideIndex] = useState<number | null>(null);
+  const [copiedSlideStyle, setCopiedSlideStyle] = useState<string[] | null>(null);
+  const [isLineColorsDropdownOpen, setIsLineColorsDropdownOpen] = useState(false);
 
   const [previewAnimationKey, setPreviewAnimationKey] = useState(0);
 
@@ -555,6 +566,8 @@ export default function ControlPanel() {
         kineticTempo: activeSongSettingsRef.current.kineticTempo || "fast",
         animation: activeSongSettingsRef.current.animation || "none",
         animationTemplate: activeSongSettingsRef.current.animationTemplate || "guessing-kinetic",
+        slideLineColors: activeSongSettingsRef.current.slideLineColors || {},
+        lineColorsPattern: activeSongSettingsRef.current.lineColorsPattern || [],
       };
       if (activeSongIdRef.current) {
         await updateSong(
@@ -593,6 +606,8 @@ export default function ControlPanel() {
       "kineticTempo",
       "animation",
       "animationTemplate",
+      "slideLineColors",
+      "lineColorsPattern",
     ];
     const styleKeys: (keyof SongSettings)[] = [
       "layout",
@@ -631,6 +646,8 @@ export default function ControlPanel() {
           kineticTempo: updated.kineticTempo,
           animation: updated.animation,
           animationTemplate: updated.animationTemplate,
+          slideLineColors: updated.slideLineColors || {},
+          lineColorsPattern: updated.lineColorsPattern || [],
         };
         updateSong(
           activeSongId,
@@ -1429,10 +1446,173 @@ export default function ControlPanel() {
     return chunks;
   }, [lyrics, defaultSongSettings.linesMode]);
 
+  const getEffectiveSlideLineColors = (
+    slideIndex: number,
+    lineCount: number,
+    settings: SongSettings = activeSongSettings
+  ): string[] => {
+    // 1. Specific per-slide colors
+    const specific = settings.slideLineColors?.[slideIndex];
+    if (specific && Array.isArray(specific) && specific.length > 0) {
+      return Array.from({ length: lineCount }, (_, i) => specific[i] || globalSettings.textColor || "#FFFFFF");
+    }
+    // 2. Song-wide line color pattern (e.g. ['#FFFFFF', '#FFD700'] for alternating)
+    const pattern = settings.lineColorsPattern;
+    if (pattern && Array.isArray(pattern) && pattern.length > 0) {
+      return Array.from({ length: lineCount }, (_, i) => pattern[i % pattern.length]);
+    }
+    // 3. Fallback to global text color
+    return Array.from({ length: lineCount }, () => globalSettings.textColor || "#FFFFFF");
+  };
+
+  const handleUpdateSongSlideColors = (
+    newSlideLineColors: { [slideIndex: number]: string[] },
+    newLineColorsPattern?: string[],
+    successMessage?: string
+  ) => {
+    setActiveSongSettings((prev) => {
+      const updated: SongSettings = {
+        ...prev,
+        slideLineColors: newSlideLineColors,
+        lineColorsPattern: newLineColorsPattern !== undefined ? newLineColorsPattern : prev.lineColorsPattern,
+      };
+
+      if (activeSongId) {
+        const songSettingsToSave = {
+          enableKineticTypography: updated.enableKineticTypography,
+          kineticTempo: updated.kineticTempo,
+          animation: updated.animation,
+          animationTemplate: updated.animationTemplate,
+          slideLineColors: updated.slideLineColors,
+          lineColorsPattern: updated.lineColorsPattern,
+        };
+        updateSong(
+          activeSongId,
+          activeSongTitle,
+          activeSongArtist,
+          lyrics,
+          songSettingsToSave,
+          activeSongFilename,
+        );
+        setTimeout(() => {
+          setSavedSongs((list) =>
+            list.map((s) =>
+              s.id === activeSongId ? { ...s, settings: songSettingsToSave } : s,
+            ),
+          );
+        }, 0);
+      }
+
+      if (liveState.type === "song" && activeSongChunkIndex !== null && songChunks[activeSongChunkIndex]) {
+        const chunk = songChunks[activeSongChunkIndex];
+        const lines = chunk.split("\n");
+        const effColors = getEffectiveSlideLineColors(activeSongChunkIndex, lines.length, updated);
+        projectSong(activeSongTitle || "Lyrics", chunk, {
+          ...updated,
+          lineColors: effColors,
+        });
+      }
+
+      return updated;
+    });
+
+    if (successMessage) {
+      toast.success(successMessage);
+    }
+  };
+
+  const handleCopySlideStyle = (slideIndex: number) => {
+    const chunk = songChunks[slideIndex];
+    if (!chunk) return;
+    const lines = chunk.split("\n");
+    const colors = getEffectiveSlideLineColors(slideIndex, lines.length, activeSongSettings);
+    setCopiedSlideStyle(colors);
+    toast.success(`Copied style of Slide #${slideIndex + 1}! (${colors.length} lines)`);
+  };
+
+  const handlePasteSlideStyle = (targetSlideIndex: number) => {
+    if (!copiedSlideStyle || copiedSlideStyle.length === 0) {
+      toast.error("No slide style copied yet.");
+      return;
+    }
+    const current = { ...(activeSongSettings.slideLineColors || {}) };
+    current[targetSlideIndex] = [...copiedSlideStyle];
+    handleUpdateSongSlideColors(
+      current,
+      activeSongSettings.lineColorsPattern,
+      `Pasted style to Slide #${targetSlideIndex + 1}`
+    );
+  };
+
+  const handlePasteStyleToRemaining = (fromSlideIndex: number) => {
+    const chunk = songChunks[fromSlideIndex];
+    if (!chunk) return;
+    const lines = chunk.split("\n");
+    const styleToUse = copiedSlideStyle || getEffectiveSlideLineColors(fromSlideIndex, lines.length, activeSongSettings);
+    const current = { ...(activeSongSettings.slideLineColors || {}) };
+    for (let i = fromSlideIndex + 1; i < songChunks.length; i++) {
+      current[i] = [...styleToUse];
+    }
+    handleUpdateSongSlideColors(
+      current,
+      activeSongSettings.lineColorsPattern,
+      `Pasted style to remaining ${songChunks.length - 1 - fromSlideIndex} slide(s)`
+    );
+  };
+
+  const handleApplyStyleToAllSlides = (slideIndexToUse?: number) => {
+    let styleToUse = copiedSlideStyle;
+    if (slideIndexToUse !== undefined && songChunks[slideIndexToUse]) {
+      const chunk = songChunks[slideIndexToUse];
+      const lines = chunk.split("\n");
+      styleToUse = getEffectiveSlideLineColors(slideIndexToUse, lines.length, activeSongSettings);
+    }
+    if (!styleToUse || styleToUse.length === 0) {
+      toast.error("No style selected to apply to all slides.");
+      return;
+    }
+    const newSlideColors: { [slideIndex: number]: string[] } = {};
+    for (let i = 0; i < songChunks.length; i++) {
+      newSlideColors[i] = [...styleToUse];
+    }
+    handleUpdateSongSlideColors(
+      newSlideColors,
+      [...styleToUse],
+      `Applied line style across all ${songChunks.length} slides!`
+    );
+  };
+
+  const handleApplyPatternToAll = (pattern: string[], label: string) => {
+    const newSlideColors: { [slideIndex: number]: string[] } = {};
+    for (let i = 0; i < songChunks.length; i++) {
+      const chunk = songChunks[i];
+      const lines = chunk.split("\n");
+      newSlideColors[i] = lines.map((_, idx) => pattern[idx % pattern.length]);
+    }
+    handleUpdateSongSlideColors(
+      newSlideColors,
+      pattern,
+      `Applied "${label}" to all slides!`
+    );
+  };
+
+  const handleResetAllLineColors = () => {
+    handleUpdateSongSlideColors(
+      {},
+      [],
+      "Reset all slide line colors to default"
+    );
+  };
+
   const handleProjectSongChunk = (chunkText: string, index: number) => {
     setActiveSongChunkIndex(index);
     setActiveProjectedRef(null);
-    projectSong(activeSongTitle || "Lyrics", chunkText, activeSongSettings);
+    const lineCount = chunkText.split("\n").length;
+    const lineColors = getEffectiveSlideLineColors(index, lineCount, activeSongSettings);
+    projectSong(activeSongTitle || "Lyrics", chunkText, {
+      ...activeSongSettings,
+      lineColors,
+    });
   };
 
   const activeBible = bibles.find((b) => b.id === selectedBibleId);
@@ -1661,6 +1841,9 @@ export default function ControlPanel() {
       kineticTempo: s.settings?.kineticTempo ?? defaultSongSettings.kineticTempo ?? "fast",
       animation: s.settings?.animation ?? defaultSongSettings.animation ?? "none",
       animationTemplate: s.settings?.animationTemplate ?? defaultSongSettings.animationTemplate ?? "guessing-kinetic",
+      lineColors: s.settings?.lineColors,
+      slideLineColors: s.settings?.slideLineColors || {},
+      lineColorsPattern: s.settings?.lineColorsPattern || [],
     };
     setActiveSongSettings(loadedSettings);
     setSongViewMode("play");
@@ -1679,12 +1862,22 @@ export default function ControlPanel() {
     if (projectOption === "first" && newChunks.length > 0) {
       setActiveSongChunkIndex(0);
       setActiveProjectedRef(null);
-      projectSong(s.title || "Lyrics", newChunks[0], loadedSettings);
+      const lineCount = newChunks[0].split("\n").length;
+      const lineColors = getEffectiveSlideLineColors(0, lineCount, loadedSettings);
+      projectSong(s.title || "Lyrics", newChunks[0], {
+        ...loadedSettings,
+        lineColors,
+      });
     } else if (projectOption === "last" && newChunks.length > 0) {
       const lastIdx = newChunks.length - 1;
       setActiveSongChunkIndex(lastIdx);
       setActiveProjectedRef(null);
-      projectSong(s.title || "Lyrics", newChunks[lastIdx], loadedSettings);
+      const lineCount = newChunks[lastIdx].split("\n").length;
+      const lineColors = getEffectiveSlideLineColors(lastIdx, lineCount, loadedSettings);
+      projectSong(s.title || "Lyrics", newChunks[lastIdx], {
+        ...loadedSettings,
+        lineColors,
+      });
     } else {
       setActiveSongChunkIndex(null);
     }
@@ -5068,6 +5261,542 @@ export default function ControlPanel() {
         </div>
       )}
 
+      {/* Slide Line Color Studio Modal */}
+      {stylingSlideIndex !== null && songChunks[stylingSlideIndex] && (() => {
+        const chunk = songChunks[stylingSlideIndex];
+        const lines = chunk.split("\n");
+        const effectiveColors = getEffectiveSlideLineColors(
+          stylingSlideIndex,
+          lines.length,
+          activeSongSettings
+        );
+
+        const SWATCHES = [
+          { name: "White", hex: "#FFFFFF" },
+          { name: "Yellow", hex: "#FFD700" },
+          { name: "Red", hex: "#EF4444" },
+          { name: "Cyan", hex: "#06B6D4" },
+          { name: "Green", hex: "#10B981" },
+          { name: "Orange", hex: "#F97316" },
+          { name: "Amber", hex: "#F59E0B" },
+          { name: "Pink", hex: "#EC4899" },
+          { name: "Sky", hex: "#38BDF8" },
+          { name: "Purple", hex: "#A855F7" },
+        ];
+
+        const setLineColor = (lineIdx: number, newColor: string) => {
+          const updated = [...effectiveColors];
+          updated[lineIdx] = newColor;
+          const currentSlideColors = { ...(activeSongSettings.slideLineColors || {}) };
+          currentSlideColors[stylingSlideIndex] = updated;
+          handleUpdateSongSlideColors(currentSlideColors);
+        };
+
+        return (
+          <div
+            className="modal-overlay"
+            style={{
+              position: "fixed",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.8)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 10000,
+              backdropFilter: "blur(6px)",
+              padding: "1rem",
+            }}
+            onClick={() => setStylingSlideIndex(null)}
+          >
+            <div
+              className="modal-content"
+              style={{
+                width: "100%",
+                maxWidth: "620px",
+                maxHeight: "90vh",
+                overflowY: "auto",
+                backgroundColor: "var(--bg-secondary, #18181b)",
+                borderRadius: "14px",
+                border: "1px solid var(--border-subtle, #27272a)",
+                padding: "20px 24px",
+                boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
+                display: "flex",
+                flexDirection: "column",
+                gap: "18px",
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  borderBottom: "1px solid rgba(255,255,255,0.08)",
+                  paddingBottom: "12px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "8px",
+                      background: "rgba(56, 189, 248, 0.15)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Palette size={18} style={{ color: "#38bdf8" }} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "1.05rem", fontWeight: 700 }}>
+                      Slide #{stylingSlideIndex + 1} Line Colors
+                    </h3>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                      Total {lines.length} line{lines.length === 1 ? "" : "s"} in this slide
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => setStylingSlideIndex(null)}
+                  style={{ width: "30px", height: "30px" }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Live Preview Card */}
+              <div
+                style={{
+                  background: "#080808",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "10px",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  textAlign: activeSongSettings.horizontalAlign || "center",
+                  minHeight: "90px",
+                  boxShadow: "inset 0 2px 8px rgba(0,0,0,0.6)",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "0.65rem",
+                    color: "var(--text-muted)",
+                    marginBottom: "8px",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    width: "100%",
+                  }}
+                >
+                  Live Slide Preview
+                </div>
+                <div
+                  style={{
+                    width: "100%",
+                    fontSize: "1.15rem",
+                    fontWeight: activeSongSettings.songFontWeight || "600",
+                    fontFamily: globalSettings.fontFamily || "Inter",
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {lines.map((line, lIdx) => (
+                    <div
+                      key={lIdx}
+                      style={{
+                        color: effectiveColors[lIdx] || "#FFFFFF",
+                        textShadow: "0 2px 4px rgba(0,0,0,0.8)",
+                      }}
+                    >
+                      {line || "\u00A0"}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Line-by-Line Color Palette Choosers */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  Choose Color Per Line
+                </div>
+
+                {lines.map((line, lIdx) => {
+                  const currentColor = effectiveColors[lIdx] || "#FFFFFF";
+
+                  return (
+                    <div
+                      key={lIdx}
+                      style={{
+                        background: "rgba(255,255,255,0.03)",
+                        border: "1px solid rgba(255,255,255,0.06)",
+                        borderRadius: "8px",
+                        padding: "10px 12px",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "8px",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span
+                            style={{
+                              fontSize: "0.7rem",
+                              fontWeight: 700,
+                              background: "rgba(255,255,255,0.1)",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              color: currentColor,
+                            }}
+                          >
+                            Line {lIdx + 1}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "0.82rem",
+                              fontWeight: 500,
+                              color: currentColor,
+                              maxWidth: "320px",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            "{line}"
+                          </span>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          {/* Hex text input */}
+                          <input
+                            type="text"
+                            value={currentColor}
+                            onChange={(e) => setLineColor(lIdx, e.target.value)}
+                            style={{
+                              width: "72px",
+                              padding: "3px 6px",
+                              fontSize: "0.75rem",
+                              background: "rgba(0,0,0,0.4)",
+                              border: "1px solid rgba(255,255,255,0.15)",
+                              borderRadius: "4px",
+                              color: currentColor,
+                              fontWeight: 600,
+                              textAlign: "center",
+                            }}
+                          />
+                          {/* Native color picker input */}
+                          <label
+                            style={{
+                              position: "relative",
+                              width: "24px",
+                              height: "24px",
+                              borderRadius: "50%",
+                              backgroundColor: currentColor,
+                              border: "2px solid rgba(255,255,255,0.4)",
+                              cursor: "pointer",
+                              display: "inline-block",
+                              flexShrink: 0,
+                            }}
+                            title="Open custom color picker"
+                          >
+                            <input
+                              type="color"
+                              value={currentColor.startsWith("#") && currentColor.length === 7 ? currentColor : "#FFFFFF"}
+                              onChange={(e) => setLineColor(lIdx, e.target.value)}
+                              style={{
+                                opacity: 0,
+                                width: 0,
+                                height: 0,
+                                position: "absolute",
+                              }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      {/* Swatches Row */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {SWATCHES.map((swatch) => {
+                          const isSelected =
+                            currentColor.toLowerCase() === swatch.hex.toLowerCase();
+                          return (
+                            <button
+                              key={swatch.hex}
+                              type="button"
+                              onClick={() => setLineColor(lIdx, swatch.hex)}
+                              title={`${swatch.name} (${swatch.hex})`}
+                              style={{
+                                width: "26px",
+                                height: "26px",
+                                borderRadius: "6px",
+                                backgroundColor: swatch.hex,
+                                border: isSelected
+                                  ? "2px solid #ffffff"
+                                  : "1px solid rgba(255,255,255,0.2)",
+                                boxShadow: isSelected
+                                  ? "0 0 8px " + swatch.hex
+                                  : "none",
+                                cursor: "pointer",
+                                transform: isSelected ? "scale(1.15)" : "scale(1)",
+                                transition: "all 0.15s ease",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: 0,
+                              }}
+                            >
+                              {isSelected && (
+                                <Check
+                                  size={13}
+                                  style={{
+                                    color: swatch.hex === "#FFFFFF" || swatch.hex === "#FFD700" ? "#000000" : "#ffffff",
+                                  }}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Quick Slide Presets */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  Quick Slide Presets
+                </div>
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: "0.75rem", padding: "5px 10px", borderRadius: "6px" }}
+                    onClick={() => {
+                      const colors = lines.map((_, i) => (i % 2 === 1 ? "#FFD700" : "#FFFFFF"));
+                      const next = { ...(activeSongSettings.slideLineColors || {}) };
+                      next[stylingSlideIndex] = colors;
+                      handleUpdateSongSlideColors(next);
+                    }}
+                  >
+                    Every 2nd Yellow
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: "0.75rem", padding: "5px 10px", borderRadius: "6px" }}
+                    onClick={() => {
+                      const colors = lines.map((_, i) => (i % 2 === 1 ? "#F59E0B" : "#FFFFFF"));
+                      const next = { ...(activeSongSettings.slideLineColors || {}) };
+                      next[stylingSlideIndex] = colors;
+                      handleUpdateSongSlideColors(next);
+                    }}
+                  >
+                    White / Gold
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: "0.75rem", padding: "5px 10px", borderRadius: "6px" }}
+                    onClick={() => {
+                      const colors = lines.map((_, i) => (i % 2 === 1 ? "#FFD700" : "#06B6D4"));
+                      const next = { ...(activeSongSettings.slideLineColors || {}) };
+                      next[stylingSlideIndex] = colors;
+                      handleUpdateSongSlideColors(next);
+                    }}
+                  >
+                    Lead & Choir
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: "0.75rem", padding: "5px 10px", borderRadius: "6px" }}
+                    onClick={() => {
+                      const colors = lines.map((_, i) => (i % 2 === 1 ? "#EF4444" : "#FFFFFF"));
+                      const next = { ...(activeSongSettings.slideLineColors || {}) };
+                      next[stylingSlideIndex] = colors;
+                      handleUpdateSongSlideColors(next);
+                    }}
+                  >
+                    White & Red
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: "0.75rem", padding: "5px 10px", borderRadius: "6px" }}
+                    onClick={() => {
+                      const colors = lines.map(() => "#FFFFFF");
+                      const next = { ...(activeSongSettings.slideLineColors || {}) };
+                      next[stylingSlideIndex] = colors;
+                      handleUpdateSongSlideColors(next);
+                    }}
+                  >
+                    All White
+                  </button>
+                </div>
+              </div>
+
+              {/* Style Actions & Propagation */}
+              <div
+                style={{
+                  borderTop: "1px solid rgba(255,255,255,0.08)",
+                  paddingTop: "14px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "10px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    fontWeight: 700,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                  }}
+                >
+                  Copy & Apply Across Slides
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      fontSize: "0.78rem",
+                      padding: "7px 12px",
+                      borderRadius: "6px",
+                    }}
+                    onClick={() => handleCopySlideStyle(stylingSlideIndex)}
+                  >
+                    <Copy size={13} />
+                    Copy This Slide Style
+                  </button>
+
+                  {copiedSlideStyle ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        fontSize: "0.78rem",
+                        padding: "7px 12px",
+                        borderRadius: "6px",
+                        background: "rgba(99, 102, 241, 0.2)",
+                        borderColor: "var(--primary)",
+                        color: "#c7d2fe",
+                      }}
+                      onClick={() => handlePasteSlideStyle(stylingSlideIndex)}
+                    >
+                      <ClipboardCheck size={13} />
+                      Paste Copied Style Here
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      No copied style in clipboard
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      fontSize: "0.78rem",
+                      padding: "7px 12px",
+                      borderRadius: "6px",
+                    }}
+                    onClick={() => handlePasteStyleToRemaining(stylingSlideIndex)}
+                    disabled={stylingSlideIndex >= songChunks.length - 1}
+                  >
+                    Paste to Remaining Slides ({stylingSlideIndex + 2} → {songChunks.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      fontSize: "0.78rem",
+                      padding: "7px 12px",
+                      borderRadius: "6px",
+                    }}
+                    onClick={() => handleApplyStyleToAllSlides(stylingSlideIndex)}
+                  >
+                    <Sparkles size={13} />
+                    Apply to ALL {songChunks.length} Slides
+                  </button>
+                </div>
+              </div>
+
+              {/* Done button */}
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "4px" }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ padding: "7px 20px", borderRadius: "6px", fontSize: "0.85rem" }}
+                  onClick={() => setStylingSlideIndex(null)}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Floating Lyrics Preview Tooltip Plane */}
       {showSearchResultsModal && hoveredSearchResult && (
         <div
@@ -6841,6 +7570,13 @@ export default function ControlPanel() {
                         animationTemplate={
                           activeSongSettings.animationTemplate || "guessing-kinetic"
                         }
+                        lineColors={
+                          getEffectiveSlideLineColors(
+                            activeSongChunkIndex ?? 0,
+                            (songChunks[activeSongChunkIndex ?? 0] || "Line 1\nLine 2").split("\n").length,
+                            activeSongSettings
+                          )
+                        }
                       />
                     </div>
                   </div>
@@ -7255,8 +7991,336 @@ export default function ControlPanel() {
                           alignItems: "center",
                           gap: "8px",
                           flexShrink: 0,
+                          position: "relative",
                         }}
                       >
+                        {copiedSlideStyle && (
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              background: "rgba(99, 102, 241, 0.15)",
+                              border: "1px solid rgba(99, 102, 241, 0.35)",
+                              borderRadius: "6px",
+                              padding: "3px 8px",
+                              fontSize: "0.72rem",
+                              color: "#c7d2fe",
+                            }}
+                            title="Slide style copied in clipboard"
+                          >
+                            <ClipboardCheck size={11} style={{ color: "#818cf8" }} />
+                            <span>Style Copied</span>
+                            <div style={{ display: "flex", gap: "2px", marginLeft: "2px" }}>
+                              {copiedSlideStyle.map((c, i) => (
+                                <span
+                                  key={i}
+                                  style={{
+                                    width: "6px",
+                                    height: "6px",
+                                    borderRadius: "50%",
+                                    backgroundColor: c,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "#818cf8",
+                                fontSize: "0.7rem",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                padding: "0 2px",
+                                textDecoration: "underline",
+                                marginLeft: "4px",
+                              }}
+                              onClick={() => handleApplyStyleToAllSlides()}
+                              title="Apply this copied style across every slide"
+                            >
+                              Apply All
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Line Colors Dropdown */}
+                        <div style={{ position: "relative" }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{
+                              padding: "5px 12px",
+                              fontSize: "0.78rem",
+                              borderRadius: "6px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                            }}
+                            onClick={() =>
+                              setIsLineColorsDropdownOpen(!isLineColorsDropdownOpen)
+                            }
+                            title="Song-wide line color patterns & styles"
+                          >
+                            <Palette size={12} style={{ color: "#38bdf8" }} />
+                            Line Colors
+                            <ChevronDown size={11} />
+                          </button>
+
+                          {isLineColorsDropdownOpen && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                right: 0,
+                                top: "100%",
+                                marginTop: "6px",
+                                zIndex: 1000,
+                                minWidth: "250px",
+                                backgroundColor: "var(--bg-secondary, #18181b)",
+                                border: "1px solid var(--border-subtle, #27272a)",
+                                borderRadius: "8px",
+                                boxShadow: "0 10px 25px rgba(0,0,0,0.5)",
+                                padding: "6px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "4px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: "0.68rem",
+                                  fontWeight: 700,
+                                  color: "var(--text-muted)",
+                                  padding: "4px 8px 2px",
+                                  textTransform: "uppercase",
+                                  letterSpacing: "0.5px",
+                                }}
+                              >
+                                Song-Wide Patterns
+                              </div>
+
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  padding: "6px 10px",
+                                  fontSize: "0.78rem",
+                                  borderRadius: "4px",
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "var(--text-primary)",
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "rgba(255,255,255,0.06)")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  handleApplyPatternToAll(
+                                    ["#FFFFFF", "#FFD700"],
+                                    "Every 2nd Line Yellow"
+                                  );
+                                  setIsLineColorsDropdownOpen(false);
+                                }}
+                              >
+                                <span>Every 2nd line Yellow</span>
+                                <div style={{ display: "flex", gap: "3px" }}>
+                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#FFFFFF" }} />
+                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#FFD700" }} />
+                                </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  padding: "6px 10px",
+                                  fontSize: "0.78rem",
+                                  borderRadius: "4px",
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "var(--text-primary)",
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "rgba(255,255,255,0.06)")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  handleApplyPatternToAll(
+                                    ["#FFFFFF", "#F59E0B"],
+                                    "Alternate White/Gold"
+                                  );
+                                  setIsLineColorsDropdownOpen(false);
+                                }}
+                              >
+                                <span>Alternate White / Gold</span>
+                                <div style={{ display: "flex", gap: "3px" }}>
+                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#FFFFFF" }} />
+                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#F59E0B" }} />
+                                </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  padding: "6px 10px",
+                                  fontSize: "0.78rem",
+                                  borderRadius: "4px",
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "var(--text-primary)",
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "rgba(255,255,255,0.06)")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  handleApplyPatternToAll(
+                                    ["#06B6D4", "#FFD700"],
+                                    "Lead & Choir (Cyan/Yellow)"
+                                  );
+                                  setIsLineColorsDropdownOpen(false);
+                                }}
+                              >
+                                <span>Lead & Choir (Cyan/Yellow)</span>
+                                <div style={{ display: "flex", gap: "3px" }}>
+                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#06B6D4" }} />
+                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#FFD700" }} />
+                                </div>
+                              </button>
+
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  padding: "6px 10px",
+                                  fontSize: "0.78rem",
+                                  borderRadius: "4px",
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "var(--text-primary)",
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "rgba(255,255,255,0.06)")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  handleApplyPatternToAll(
+                                    ["#FFFFFF", "#EF4444"],
+                                    "White & Red Accent"
+                                  );
+                                  setIsLineColorsDropdownOpen(false);
+                                }}
+                              >
+                                <span>White & Red Accent</span>
+                                <div style={{ display: "flex", gap: "3px" }}>
+                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#FFFFFF" }} />
+                                  <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#EF4444" }} />
+                                </div>
+                              </button>
+
+                              <div style={{ height: "1px", backgroundColor: "var(--border-subtle, #27272a)", margin: "4px 0" }} />
+
+                              {copiedSlideStyle && (
+                                <button
+                                  type="button"
+                                  className="dropdown-item"
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                    padding: "6px 10px",
+                                    fontSize: "0.78rem",
+                                    borderRadius: "4px",
+                                    background: "rgba(99, 102, 241, 0.15)",
+                                    border: "1px solid rgba(99, 102, 241, 0.3)",
+                                    color: "#c7d2fe",
+                                    cursor: "pointer",
+                                    textAlign: "left",
+                                  }}
+                                  onClick={() => {
+                                    handleApplyStyleToAllSlides();
+                                    setIsLineColorsDropdownOpen(false);
+                                  }}
+                                >
+                                  <ClipboardCheck size={12} />
+                                  <span>Paste Copied Style to ALL Slides</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                  padding: "6px 10px",
+                                  fontSize: "0.78rem",
+                                  borderRadius: "4px",
+                                  background: "transparent",
+                                  border: "none",
+                                  color: "var(--text-muted)",
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "rgba(255,255,255,0.06)")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.backgroundColor =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  handleResetAllLineColors();
+                                  setIsLineColorsDropdownOpen(false);
+                                }}
+                              >
+                                <RotateCcw size={12} />
+                                <span>Reset All Slides to Default</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
                         <button
                           type="button"
                           className="btn btn-secondary"
@@ -7321,6 +8385,16 @@ export default function ControlPanel() {
                           const isLive =
                             liveState.type === "song" &&
                             activeSongChunkIndex === index;
+                          const lines = chunk.split("\n");
+                          const lineColors = getEffectiveSlideLineColors(
+                            index,
+                            lines.length,
+                            activeSongSettings
+                          );
+                          const hasCustomColors =
+                            (activeSongSettings.slideLineColors?.[index]?.length ?? 0) > 0 ||
+                            (activeSongSettings.lineColorsPattern?.length ?? 0) > 0;
+
                           return (
                             <div
                               key={index}
@@ -7331,15 +8405,18 @@ export default function ControlPanel() {
                                 background: isLive
                                   ? "var(--primary-light)"
                                   : "rgba(0,0,0,0.3)",
-                                border: `2px solid ${isLive ? "var(--primary)" : "var(--border-subtle)"}`,
+                                border: `2px solid ${isLive ? "var(--primary)" : hasCustomColors ? "rgba(99, 102, 241, 0.4)" : "var(--border-subtle)"}`,
                                 borderRadius: "8px",
-                                padding: "12px",
+                                padding: "10px 12px",
                                 cursor: "pointer",
                                 color: isLive ? "#fff" : "var(--text-primary)",
                                 boxShadow: isLive
                                   ? "0 0 12px rgba(79, 70, 229, 0.4)"
                                   : "none",
                                 transition: "all 0.15s ease",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "6px",
                               }}
                               onMouseEnter={(e) => {
                                 if (!isLive)
@@ -7348,20 +8425,148 @@ export default function ControlPanel() {
                               }}
                               onMouseLeave={(e) => {
                                 if (!isLive)
-                                  e.currentTarget.style.borderColor =
-                                    "var(--border-subtle)";
+                                  e.currentTarget.style.borderColor = hasCustomColors
+                                    ? "rgba(99, 102, 241, 0.4)"
+                                    : "var(--border-subtle)";
                               }}
                             >
+                              {/* Header row: slide #, color dots preview, copy/paste/palette icons */}
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                                  paddingBottom: "4px",
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span
+                                    style={{
+                                      fontSize: "0.68rem",
+                                      fontWeight: 700,
+                                      padding: "1px 5px",
+                                      borderRadius: "4px",
+                                      background: isLive
+                                        ? "rgba(255,255,255,0.25)"
+                                        : "rgba(255,255,255,0.08)",
+                                      color: isLive ? "#fff" : "var(--text-muted)",
+                                    }}
+                                  >
+                                    #{index + 1}
+                                  </span>
+
+                                  {/* Color dots preview */}
+                                  <div style={{ display: "flex", gap: "3px" }}>
+                                    {lineColors.map((c, cIdx) => (
+                                      <span
+                                        key={cIdx}
+                                        style={{
+                                          width: "6px",
+                                          height: "6px",
+                                          borderRadius: "50%",
+                                          backgroundColor: c,
+                                          boxShadow: "0 0 2px rgba(0,0,0,0.5)",
+                                          border: "0.5px solid rgba(255,255,255,0.3)",
+                                        }}
+                                        title={`Line ${cIdx + 1}: ${c}`}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                  {/* Palette icon to customize colors */}
+                                  <button
+                                    type="button"
+                                    className="icon-btn"
+                                    style={{
+                                      width: "22px",
+                                      height: "22px",
+                                      padding: 0,
+                                      borderRadius: "4px",
+                                      background: "rgba(255,255,255,0.06)",
+                                    }}
+                                    title="Customize line colors for this slide"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setStylingSlideIndex(index);
+                                    }}
+                                  >
+                                    <Palette size={11} style={{ color: "#38bdf8" }} />
+                                  </button>
+
+                                  {/* Copy style */}
+                                  <button
+                                    type="button"
+                                    className="icon-btn"
+                                    style={{
+                                      width: "22px",
+                                      height: "22px",
+                                      padding: 0,
+                                      borderRadius: "4px",
+                                      background: "rgba(255,255,255,0.06)",
+                                    }}
+                                    title="Copy line style of this slide"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopySlideStyle(index);
+                                    }}
+                                  >
+                                    <Copy size={11} style={{ color: "var(--text-muted)" }} />
+                                  </button>
+
+                                  {/* Paste style (shown if copied style exists) */}
+                                  {copiedSlideStyle && (
+                                    <button
+                                      type="button"
+                                      className="icon-btn"
+                                      style={{
+                                        width: "22px",
+                                        height: "22px",
+                                        padding: 0,
+                                        borderRadius: "4px",
+                                        background: "rgba(99, 102, 241, 0.25)",
+                                        borderColor: "var(--primary)",
+                                      }}
+                                      title="Paste copied style to this slide"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlePasteSlideStyle(index);
+                                      }}
+                                    >
+                                      <ClipboardCheck size={11} style={{ color: "#818cf8" }} />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Slide lines */}
                               <div
                                 style={{
                                   fontSize: "clamp(11px, 6.5cqi, 16px)",
                                   lineHeight: "1.4",
-                                  whiteSpace: "pre",
                                   overflow: "hidden",
-                                  textOverflow: "ellipsis",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "2px",
                                 }}
                               >
-                                {chunk}
+                                {lines.map((line, lIdx) => (
+                                  <div
+                                    key={lIdx}
+                                    style={{
+                                      color: lineColors[lIdx] || (isLive ? "#fff" : "var(--text-primary)"),
+                                      fontWeight: lineColors[lIdx] && lineColors[lIdx].toUpperCase() !== "#FFFFFF" ? 600 : "inherit",
+                                      textShadow: lineColors[lIdx] && lineColors[lIdx].toUpperCase() !== "#FFFFFF" ? "0 1px 2px rgba(0,0,0,0.6)" : "none",
+                                      whiteSpace: "pre-wrap",
+                                      wordBreak: "break-word",
+                                    }}
+                                  >
+                                    {line || "\u00A0"}
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           );

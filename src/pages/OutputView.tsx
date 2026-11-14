@@ -457,7 +457,19 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
                 kineticTempo={state.kineticTempo}
                 animationTemplate={state.animationTemplate}
                 disableIntro={state.animationTemplate === "zoom-in-bottom"}
+                lineColors={state.lineColors}
               />
+            ) : state.type === "song" && state.lineColors && state.lineColors.length > 0 ? (
+              state.text.split("\n").map((line, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    color: state.lineColors![idx] || state.textColor || "#ffffff",
+                  }}
+                >
+                  {line || "\u00A0"}
+                </div>
+              ))
             ) : (
               state.text
             )}
