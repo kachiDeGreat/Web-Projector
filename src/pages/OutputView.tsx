@@ -220,7 +220,7 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
     const shadowIntensity = state.shadowIntensity ?? 80;
     const shadowVal =
       shadowIntensity > 0
-        ? `0 ${shadowIntensity * 0.015}cqi ${shadowIntensity * 0.03}cqi rgba(0,0,0,${Math.min(shadowIntensity * 0.012, 1)}), 0 ${shadowIntensity * 0.005}cqi ${shadowIntensity * 0.01}cqi rgba(0,0,0,${Math.min(shadowIntensity * 0.008, 1)})`
+        ? `0 ${shadowIntensity * 0.008}cqi ${Math.min(shadowIntensity * 0.016, 0.8)}cqi rgba(0,0,0,${Math.min(shadowIntensity * 0.012, 1)}), 0 ${shadowIntensity * 0.004}cqi ${Math.min(shadowIntensity * 0.008, 0.4)}cqi rgba(0,0,0,${Math.min(shadowIntensity * 0.008, 1)})`
         : "none";
 
     const hasOutline = (state.enableTextOutline ?? true) && (state.textOutlineWidth ?? 0.12) > 0;
@@ -252,8 +252,12 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
     // Reference font size remains static / constant according to user's refFontSize setting
     const computedRefFontSize = `${state.refFontSize * (state.layout === "LT" ? 0.6 : 1)}cqi`;
 
-    // Fast snappy transition duration (220ms for fade, 300ms for slide/zoom) to ensure live responsiveness
-    const animDuration = state.animation === "fade" ? 0.22 : 0.3;
+    const hasAnimation =
+      !isPreview &&
+      (isKinetic || (state.animation && state.animation !== "none"));
+
+    // Snappy GPU-optimized transitions (opacity and transforms only - no heavy layout/blur filters)
+    const animDuration = state.animation === "fade" ? 0.2 : 0.25;
     const transition = { duration: animDuration, ease: [0.16, 1, 0.3, 1] };
     
     let variants = {};
@@ -272,14 +276,12 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
             opacity: 0,
             y: "7cqi",
             scale: 0.8,
-            filter: "blur(6px)",
             zIndex: 3,
           },
           animate: {
             opacity: 1,
             y: 0,
             scale: 1,
-            filter: "blur(0px)",
             zIndex: 3,
             transition: {
               duration: tempoSec,
@@ -290,7 +292,6 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
             opacity: 0,
             y: "-7cqi",
             scale: 1.05,
-            filter: "blur(6px)",
             zIndex: 2,
             transition: {
               duration: exitSec,
@@ -304,24 +305,23 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
           animate: { opacity: 1, zIndex: 3 },
           exit: {
             opacity: 0,
-            y: "-4cqi",
-            filter: "blur(8px)",
+            y: "-3cqi",
             zIndex: 2,
-            transition: { duration: 0.32, ease: [0.25, 1, 0.5, 1] },
+            transition: { duration: 0.25, ease: [0.25, 1, 0.5, 1] },
           },
         };
       }
     } else if (state.animation === "zoom") {
       variants = {
-        initial: { opacity: 0, scale: 0.95, filter: "blur(4px)" },
-        animate: { opacity: 1, scale: 1, filter: "blur(0px)", transition },
-        exit: { opacity: 0, scale: 1.05, filter: "blur(4px)", transition }
+        initial: { opacity: 0, scale: 0.96 },
+        animate: { opacity: 1, scale: 1, transition },
+        exit: { opacity: 0, scale: 1.04, transition }
       };
     } else if (state.animation === "slide") {
       variants = {
-        initial: { opacity: 0, y: "3cqi", filter: "blur(3px)" },
-        animate: { opacity: 1, y: 0, filter: "blur(0px)", transition },
-        exit: { opacity: 0, y: "-3cqi", filter: "blur(3px)", transition }
+        initial: { opacity: 0, y: "2cqi" },
+        animate: { opacity: 1, y: 0, transition },
+        exit: { opacity: 0, y: "-2cqi", transition }
       };
     } else if (state.animation === "fade") {
       variants = {
@@ -330,7 +330,6 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
         exit: { opacity: 0, transition }
       };
     } else {
-      // Instant switch with 0ms delay: no lingering exit animation
       variants = {
         initial: { opacity: 1 },
         animate: { opacity: 1, transition: { duration: 0 } },
@@ -338,171 +337,193 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
       };
     }
 
-    return (
-      <motion.div
-        key={"display-" + state.text + state.title}
-        className={`projected-content layout-${state.layout} valign-${state.verticalAlign} halign-${state.horizontalAlign} ${themeClass}`}
+    const contentStyle: React.CSSProperties = {
+      position: "absolute",
+      zIndex: 2,
+      fontFamily: state.fontFamily,
+      paddingLeft: `${state.paddingLR}%`,
+      paddingRight: `${state.paddingLR}%`,
+      paddingBottom: state.layout === "LT" ? "2cqi" : "0",
+      inset: 0,
+      background: "transparent",
+      color: state.textColor || "#ffffff",
+      willChange: hasAnimation ? "transform, opacity" : "auto",
+    };
+
+    const innerBox = (
+      <div
+        className={`projected-box bg-${bgClass}`}
         style={{
-          position: "absolute",
-          zIndex: 2,
-          fontFamily: state.fontFamily,
-          paddingLeft: `${state.paddingLR}%`,
-          paddingRight: `${state.paddingLR}%`,
-          paddingBottom: state.layout === "LT" ? "2cqi" : "0",
-          inset: 0,
-          background: "transparent",
-          color: state.textColor || "#ffffff",
-          willChange: isKinetic || (state.animation && state.animation !== "none") ? "transform, opacity" : "auto",
-        }}
-        initial="initial"
-        animate="animate"
-        exit="exit"
-        variants={variants}
-      >
-        <div
-          className={`projected-box bg-${bgClass}`}
-          style={{
-            width: state.layout === "LT" ? `${state.lowerThirdWidth}%` : "100%",
-            height: state.layout === "FS" ? "100%" : "auto",
-            maxHeight: state.layout === "FS" && state.verticalAlign === "middle" ? "92%" : "auto",
-            padding:
-              state.layout === "FS"
-                ? state.transparentBackground
-                  ? "4cqi"
-                  : "6cqi"
-                : `${state.lowerThirdPadding ?? 3}cqi 4cqi`,
-            background:
-              state.layout === "LT"
-                ? bgClass === "transparent"
-                  ? "transparent"
-                  : getRgba(
-                      state.lowerThirdBgColor || "#000000",
-                      state.lowerThirdBgOpacity ?? 50,
-                    )
-                : "transparent",
-            textShadow: shadowVal,
-            display: "flex",
-            flexDirection: "column",
-            alignItems:
-              state.horizontalAlign === "left"
-                ? "flex-start"
-                : state.horizontalAlign === "right"
-                  ? "flex-end"
-                  : "center",
-            justifyContent:
-              state.layout === "FS"
-                ? state.verticalAlign === "top"
-                  ? "flex-start"
-                  : state.verticalAlign === "bottom"
-                    ? "flex-end"
-                    : "center"
+          width: state.layout === "LT" ? `${state.lowerThirdWidth}%` : "100%",
+          height: state.layout === "FS" ? "100%" : "auto",
+          maxHeight: state.layout === "FS" && state.verticalAlign === "middle" ? "92%" : "auto",
+          padding:
+            state.layout === "FS"
+              ? state.transparentBackground
+                ? "4cqi"
+                : "6cqi"
+              : `${state.lowerThirdPadding ?? 3}cqi 4cqi`,
+          background:
+            state.layout === "LT"
+              ? bgClass === "transparent"
+                ? "transparent"
+                : getRgba(
+                    state.lowerThirdBgColor || "#000000",
+                    state.lowerThirdBgOpacity ?? 50,
+                  )
+              : "transparent",
+          textShadow: shadowVal,
+          display: "flex",
+          flexDirection: "column",
+          alignItems:
+            state.horizontalAlign === "left"
+              ? "flex-start"
+              : state.horizontalAlign === "right"
+                ? "flex-end"
                 : "center",
-            gap: "1cqi",
+          justifyContent:
+            state.layout === "FS"
+              ? state.verticalAlign === "top"
+                ? "flex-start"
+                : state.verticalAlign === "bottom"
+                  ? "flex-end"
+                  : "center"
+              : "center",
+          gap: "1cqi",
+        }}
+      >
+        {state.title &&
+          state.type === "bible" &&
+          state.refPosition === "top" && (
+            <div
+              className="projected-title"
+              style={{
+                width: "100%",
+                textAlign: state.refAlign as any,
+                color: state.refColor,
+                fontSize: computedRefFontSize,
+                fontFamily: state.fontFamily,
+                margin: 0,
+                marginBottom: "0.5cqi",
+                textTransform:
+                  state.refTextTransform !== "none"
+                    ? (state.refTextTransform as any)
+                    : undefined,
+                fontWeight: state.refFontWeight,
+                ...outlineStyle,
+              }}
+            >
+              {state.title}
+            </div>
+          )}
+
+        <div
+          className="projected-text"
+          style={{
+            width: "100%",
+            textAlign: state.horizontalAlign as any,
+            color: state.textColor,
+            fontSize: computedVerseFontSize,
+            fontFamily: state.fontFamily,
+            whiteSpace: "pre-wrap",
+            lineHeight: 1.28,
+            textTransform:
+              state.type === "song"
+                ? state.songTextTransform !== "none"
+                  ? (state.songTextTransform as any)
+                  : undefined
+                : state.bibleTextTransform !== "none"
+                  ? (state.bibleTextTransform as any)
+                  : undefined,
+            fontWeight:
+              state.type === "song"
+                ? state.songFontWeight
+                : state.bibleFontWeight,
+            ...outlineStyle,
           }}
         >
-          {state.title &&
-            state.type === "bible" &&
-            state.refPosition === "top" && (
+          {state.type === "song" && state.enableKineticTypography ? (
+            <AnimatedLyric
+              text={state.text}
+              isEnabled={true}
+              kineticTempo={state.kineticTempo}
+              animationTemplate={state.animationTemplate}
+              disableIntro={state.animationTemplate === "zoom-in-bottom"}
+              lineColors={state.lineColors}
+            />
+          ) : state.type === "song" && state.lineColors && state.lineColors.length > 0 ? (
+            state.text.split("\n").map((line: string, idx: number) => (
               <div
-                className="projected-title"
+                key={idx}
                 style={{
-                  width: "100%",
-                  textAlign: state.refAlign as any,
-                  color: state.refColor,
-                  fontSize: computedRefFontSize,
-                  fontFamily: state.fontFamily,
-                  margin: 0,
-                  marginBottom: "0.5cqi",
-                  textTransform:
-                    state.refTextTransform !== "none"
-                      ? (state.refTextTransform as any)
-                      : undefined,
-                  fontWeight: state.refFontWeight,
-                  ...outlineStyle,
+                  color: state.lineColors![idx] || state.textColor || "#ffffff",
                 }}
               >
-                {state.title}
+                {line || "\u00A0"}
               </div>
-            )}
-
-          <div
-            className="projected-text"
-            style={{
-              width: "100%",
-              textAlign: state.horizontalAlign as any,
-              color: state.textColor,
-              fontSize: computedVerseFontSize,
-              fontFamily: state.fontFamily,
-              whiteSpace: "pre-wrap",
-              lineHeight: 1.28,
-              textTransform:
-                state.type === "song"
-                  ? state.songTextTransform !== "none"
-                    ? (state.songTextTransform as any)
-                    : undefined
-                  : state.bibleTextTransform !== "none"
-                    ? (state.bibleTextTransform as any)
-                    : undefined,
-              fontWeight:
-                state.type === "song"
-                  ? state.songFontWeight
-                  : state.bibleFontWeight,
-              ...outlineStyle,
-            }}
-          >
-            {state.type === "song" && state.enableKineticTypography ? (
-              <AnimatedLyric
-                text={state.text}
-                isEnabled={true}
-                kineticTempo={state.kineticTempo}
-                animationTemplate={state.animationTemplate}
-                disableIntro={state.animationTemplate === "zoom-in-bottom"}
-                lineColors={state.lineColors}
-              />
-            ) : state.type === "song" && state.lineColors && state.lineColors.length > 0 ? (
-              state.text.split("\n").map((line, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    color: state.lineColors![idx] || state.textColor || "#ffffff",
-                  }}
-                >
-                  {line || "\u00A0"}
-                </div>
-              ))
-            ) : (
-              state.text
-            )}
-          </div>
-
-          {state.title &&
-            state.type === "bible" &&
-            state.refPosition === "bottom" && (
-              <div
-                className="projected-title"
-                style={{
-                  width: "100%",
-                  textAlign: state.refAlign as any,
-                  color: state.refColor,
-                  fontSize: computedRefFontSize,
-                  fontFamily: state.fontFamily,
-                  margin: 0,
-                  marginTop: "0.5cqi",
-                  textTransform:
-                    state.refTextTransform !== "none"
-                      ? (state.refTextTransform as any)
-                      : undefined,
-                  fontWeight: state.refFontWeight,
-                  ...outlineStyle,
-                }}
-              >
-                {state.title}
-              </div>
-            )}
+            ))
+          ) : (
+            state.text
+          )}
         </div>
-      </motion.div>
+
+        {state.title &&
+          state.type === "bible" &&
+          state.refPosition === "bottom" && (
+            <div
+              className="projected-title"
+              style={{
+                width: "100%",
+                textAlign: state.refAlign as any,
+                color: state.refColor,
+                fontSize: computedRefFontSize,
+                fontFamily: state.fontFamily,
+                margin: 0,
+                marginTop: "0.5cqi",
+                textTransform:
+                  state.refTextTransform !== "none"
+                    ? (state.refTextTransform as any)
+                    : undefined,
+                fontWeight: state.refFontWeight,
+                ...outlineStyle,
+              }}
+            >
+              {state.title}
+            </div>
+          )}
+      </div>
+    );
+
+    if (hasAnimation) {
+      return (
+        <motion.div
+          key={"display-" + state.text + (state.title || "")}
+          className={`projected-content layout-${state.layout} valign-${state.verticalAlign} halign-${state.horizontalAlign} ${themeClass}`}
+          style={contentStyle}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          variants={variants}
+        >
+          {innerBox}
+        </motion.div>
+      );
+    }
+
+    return (
+      <div
+        className={`projected-content layout-${state.layout} valign-${state.verticalAlign} halign-${state.horizontalAlign} ${themeClass}`}
+        style={contentStyle}
+      >
+        {innerBox}
+      </div>
     );
   };
+
+  const isKinetic = liveState?.type === "song" && liveState?.enableKineticTypography;
+  const hasLiveAnimation =
+    !isPreview &&
+    (isKinetic || (liveState?.animation && liveState?.animation !== "none"));
 
   return (
     <div
@@ -536,9 +557,13 @@ const OutputView = ({ isPreview = false }: { isPreview?: boolean }) => {
           flexDirection: "column",
         }}
       >
-        <AnimatePresence mode="sync">
-          {renderProjectedContent(liveState)}
-        </AnimatePresence>
+        {hasLiveAnimation ? (
+          <AnimatePresence mode="popLayout">
+            {renderProjectedContent(liveState)}
+          </AnimatePresence>
+        ) : (
+          renderProjectedContent(liveState)
+        )}
       </div>
       {!document.fullscreenElement && !isPreview && (
         <div

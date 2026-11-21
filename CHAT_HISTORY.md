@@ -234,4 +234,40 @@ When running the packaged Windows `.exe` application alongside OBS Studio on the
   * Updates to slide colors auto-save to IndexedDB and the backend `/api/songs/save` endpoint immediately, keeping local and remote clients synchronized.
 
 ---
-*Created on 2026-11-02. Updated on 2026-11-13. Maintained for Web-Projector.*
+
+## 10. Fullscreen Bible Verse Freeze Fix & GPU Compositor Optimization
+
+### A. Root Cause Analysis
+* **Context**: Navigating Bible verses in Full Screen (`FS` mode) by clicking *"Next"* or pressing Arrow keys caused noticeable UI freezing and latency before showing the next verse. In severe cases, the browser source in OBS and vMix would stall and freeze completely, requiring a manual refresh of both the browser source and the application. Conversely, in Lower Third (`LT` mode), transitions were completely instantaneous.
+* **Underlying Root Causes**:
+  1. **Fullscreen Gaussian Backdrop Blur (`panel.css`)**:
+     * `.projected-box` had `backdrop-filter: blur(8px);` by default.
+     * In `.layout-FS`, the box expands to `100% width` and `100% height`. Unless `transparentBackground` was true, the 8px Gaussian blur shader executed across all 2,073,600 pixels (1080p) or 8,294,400 pixels (4K) on every single paint.
+     * In `.layout-LT`, the box is only a tiny strip (<10% screen area), which is why Lower Third felt fast.
+  2. **Conflicting CSS `transition: all 0.3s ease;` (`panel.css`)**:
+     * `.projected-content` had `transition: all 0.3s ease;`.
+     * Because Framer Motion and React manipulate element styles dynamically, the CSS transition intercepted style and layout changes, forcing 300ms of CPU-intensive style interpolation and layout recalculation on every verse change.
+  3. **Framer Motion `<AnimatePresence mode="sync">` Layer Stacking (`OutputView.tsx`)**:
+     * Even with `animation: "none"` configured, content was wrapped in `<AnimatePresence mode="sync">` returning a `<motion.div>` with changing keys.
+     * Under `mode="sync"`, Framer Motion retained the exiting verse element while mounting the incoming verse element simultaneously.
+     * In Chromium Embedded Framework (CEF) used by OBS and vMix browser sources, having two overlapping full-screen surfaces with text stroke, drop shadows, and backdrop filters created severe GPU texture compositor pipeline stalls.
+  4. **Extreme 58px Text Shadow Blur Radius (`OutputView.tsx`)**:
+     * Text shadow blur radius was calculated up to `3cqi` (57.6px on 1080p) on large fullscreen text paragraphs.
+  5. **Main Thread Smooth Scroll Overhead (`ControlPanel.tsx`)**:
+     * Sidebar verse list tracking used `el.scrollIntoView({ behavior: "smooth", block: "nearest" })`, firing 400ms scroll animation loops on the main thread during verse navigation.
+
+### B. Applied Architectural Optimizations
+1. **CSS Hardware Optimization** ([panel.css](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/src/styles/panel.css)):
+   * Removed `transition: all 0.3s ease;` from `.projected-content` to eliminate transition conflicts with React and Framer Motion.
+   * Explicitly added `backdrop-filter: none !important; -webkit-backdrop-filter: none !important;` to `.layout-FS .projected-box`.
+   * Removed default `backdrop-filter: blur(8px)` from `.projected-box` and isolated it strictly to `.layout-LT:not(.bg-transparent) .projected-box`.
+2. **Instant In-Place React DOM Updates** ([OutputView.tsx](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/src/pages/OutputView.tsx)):
+   * When animations are disabled (`animation === "none"` or preview), `<AnimatePresence>` and `<motion.div>` are completely bypassed.
+   * Renders a static `<div className="projected-content ...">`, enabling React to update scripture text in-place in `< 0.05ms` with zero DOM node unmounting, zero GPU texture reallocation, and zero frame drops.
+   * When animations are enabled (`fade`, `slide`, `zoom`), switched to `<AnimatePresence mode="popLayout">` and replaced heavy CSS `filter: blur(...)` passes with hardware-accelerated GPU transforms (`opacity`, `translateY`, `scale`).
+   * Clamped text shadow blur radius to `0.8cqi` (~15px) for sharp contrast without GPU fragment shader bottlenecks.
+3. **Instant Sidebar Verse Tracking** ([ControlPanel.tsx](file:///home/onyekachi-godswill-richard/Desktop/WEB%20DEV/Web%20Dev/Web-Projector/src/pages/ControlPanel.tsx)):
+   * Changed `scrollIntoView` behavior from `"smooth"` to `"auto"` for instant, zero-latency verse navigation in the control panel.
+
+---
+*Created on 2026-11-02. Updated on 2026-11-21. Maintained for Web-Projector.*

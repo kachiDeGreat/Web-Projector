@@ -2149,10 +2149,10 @@ export default function ControlPanel() {
   useEffect(() => {
     if (activeTab === "bible" && activeProjectedRef) {
       const el = document.getElementById(`verse-${activeProjectedRef.verse}`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      if (el) el.scrollIntoView({ behavior: "auto", block: "nearest" });
     } else if (activeTab === "songs" && activeSongChunkIndex !== null) {
       const el = document.getElementById(`song-chunk-${activeSongChunkIndex}`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      if (el) el.scrollIntoView({ behavior: "auto", block: "nearest" });
     }
   }, [activeProjectedRef, activeSongChunkIndex, activeTab]);
 

@@ -755,7 +755,6 @@
   width: 100%;
   height: 100%;
   color: white;
-  transition: all 0.3s ease;
   position: relative;
   display: flex;
 }
@@ -769,6 +768,8 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .layout-LT {
@@ -798,6 +799,7 @@
 .bg-transparent {
   background: transparent !important;
   backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   box-shadow: none !important;
   border-left: none !important;
   border-right: none !important;
@@ -805,11 +807,14 @@
 
 /* The inner box containing the text */
 .projected-box {
-  background: rgba(0,0,0,0.6);
-  backdrop-filter: blur(8px);
   display: flex;
   flex-direction: column;
   justify-content: center;
+}
+
+.layout-LT:not(.bg-transparent) .projected-box {
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Shadows */
